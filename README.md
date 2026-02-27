@@ -1,11 +1,11 @@
-# Zabbix Baseline — Holt-Winters Triple Exponential Smoothing
+# Zabbix Baseline — Algoritmos Nativos de Deteccion de Anomalias
 
 [![GitHub Pages](https://img.shields.io/badge/Live%20Demo-GitHub%20Pages-0d1520?style=flat-square&logo=github&logoColor=white&labelColor=1a2740&color=e07b39)](https://simonlexrs.github.io/zabbix-anomaly-detection-baseline/)
 [![HTML](https://img.shields.io/badge/HTML-100%25-e07b39?style=flat-square&logo=html5&logoColor=white)](https://github.com/SimonLexRS/zabbix-anomaly-detection-baseline/blob/main/index.html)
-[![Chart.js](https://img.shields.io/badge/Chart.js-4.4.1-ff6384?style=flat-square&logo=chartdotjs&logoColor=white)](https://www.chartjs.org/)
+[![Chart.js](https://img.shields.io/badge/Chart.js-4.4.1-e07b39?style=flat-square&logo=chartdotjs&logoColor=white)](https://www.chartjs.org/)
 [![Views](https://hits.seeyoufarm.com/api/count/incr/badge.svg?url=https%3A%2F%2Fsimonlexrs.github.io%2Fzabbix-anomaly-detection-baseline%2F&count_bg=%231a2740&title_bg=%23e07b39&icon=eye&icon_color=%23ffffff&title=views&edge_flat=true)](https://hits.seeyoufarm.com)
 
-> Dashboard interactivo que explica y simula el mecanismo nativo de deteccion de anomalias de Zabbix usando **Holt-Winters Triple Exponential Smoothing**.
+> Dashboard interactivo que explica y simula el mecanismo nativo de deteccion de anomalias de Zabbix usando **baselinewma (WMA)**, **baselinedev (stddevpop)** y **trendstl (STL + MAD)** — los 3 algoritmos nativos reales de Zabbix 6.0+.
 
 ---
 
@@ -17,147 +17,171 @@
 
 ## Que hace el dashboard
 
-El dashboard es una pagina HTML estatica completamente autocontenida (sin backend) que simula como Zabbix construye un **baseline predictivo** para una metrica de red (CPU Utilization de un BTS) y detecta desvios automaticamente.
+El dashboard es una pagina HTML estatica completamente autocontenida (sin backend) que simula como Zabbix 6.0+ construye un **baseline predictivo** para una metrica de red (CPU Utilization de un BTS — LA PAZ NORTE) usando sus 3 funciones nativas de deteccion de anomalias, permitiendo comparar su comportamiento en tiempo real.
 
-### Graficos incluidos
+---
 
-#### 1. CPU Utilization — Grafico principal (24 h, resolucion 1 min)
+## Algoritmos implementados
+
+### 1. baselinewma() — Weighted Moving Average
+
+Calcula el baseline promediando los datos del **mismo periodo en N estaciones anteriores**, con pesos que dan mas importancia a las estaciones mas recientes.
+
+**Sintaxis en Zabbix:**
+```
+baselinewma(/host/key, 1h:now/h, "w", 4)
+```
+
+- `Semana mas reciente` → mayor peso
+- `Semana mas antigua` → menor peso
+- Ideal para metricas con **patron semanal estable** (trafico de datos BTS, CPU de core network)
+
+**Ejemplo de trigger:**
+```
+trendavg(/host/key,1h:now/h) > baselinewma(/host/key,1h,"w",4) * 1.5
+```
+El trafico de esta hora supera 1.5x el promedio de las ultimas 4 semanas.
+
+---
+
+### 2. baselinedev() — Desviacion estandar poblacional (stddevpop)
+
+Retorna **cuantas desviaciones estandar** se aleja el periodo actual respecto a los mismos periodos historicos. Devuelve un numero: `0` = normal, `3` = muy anomalo.
+
+**Sintaxis en Zabbix:**
+```
+baselinedev(/host/key, 1h:now/h, "d", 10)
+```
+
+- Rapido de implementar en dispositivos masivos con bajo overhead
+- Ideal para **latencia PING, disponibilidad de servicios**
+
+**Ejemplo de trigger:**
+```
+baselinedev(/host/key,1h:now/h,"d",10) > 3
+```
+El valor actual esta a mas de 3sigma del historial de los ultimos 10 dias.
+
+---
+
+### 3. trendstl() — STL Decomposition + MAD
+
+El mas avanzado. Descompone la serie temporal en **Tendencia + Estacionalidad + Residuo** (LOESS), luego aplica MAD (Median Absolute Deviation) al residuo para detectar anomalias. Retorna una `tasa de anomalias` (0.0 a 1.0).
+
+**Sintaxis en Zabbix:**
+```
+trendstl(/host/key, 28d:now/d, 1d, 7d)
+```
+Analiza 28 dias, detecta en el ultimo dia, estacionalidad semanal.
+
+- Requiere minimo **28 dias de historial**
+- Detecta anomalias sutiles que los otros metodos no ven
+- Ideal para **tasa de errores CRC, retransmisiones TCP**
+
+**Ejemplo de trigger:**
+```
+trendstl(/host/key,28d:now/d,1d,7d) > 0.3
+```
+Mas del 30% de los valores del ultimo dia son anomalos vs. las ultimas 4 semanas con patron semanal.
+
+---
+
+## Graficos incluidos
+
+### Grafico principal — CPU Utilization (24 h, resolucion 1 min)
 
 Muestra 5 capas de informacion simultaneamente:
 
 | Capa | Color | Descripcion |
 |---|---|---|
-| **Valor real** | Azul (`#60a5fa`) | Lo que Zabbix mide cada minuto |
-| **Baseline (Holt-Winters)** | Naranja (`#e07b39`) punteado | Prediccion del comportamiento normal |
-| **Banda superior** | Relleno naranja (10% opacidad) | `Baseline + σ × desviacion_historica` |
-| **Banda inferior** | Transparente | `Baseline − σ × desviacion_historica` |
+| **Valor real** | Azul (`#60a5fa`) | CPU % medido por Zabbix cada minuto desde el agente |
+| **Baseline** | Naranja (`#e07b39`) punteado | Prediccion del comportamiento normal segun el algoritmo activo |
+| **Banda superior** | Relleno naranja (10% opacidad) | `Baseline + sigma x desviacion_historica` |
+| **Banda inferior** | Transparente | `Baseline - sigma x desviacion_historica` |
 | **Anomalias** | Rojo (`#ef4444`) puntos | Valores que salieron de la banda de confianza |
 
-El tooltip interactivo muestra el **Δ baseline** (diferencia entre el valor real y la prediccion) en cada punto del tiempo.
+### Grafico secundario — Comparacion por algoritmo
 
-#### 2. Descomposicion del Baseline — Nivel, Tendencia y Estacionalidad
+| Algoritmo activo | Que muestra el grafico secundario |
+|---|---|
+| **baselinewma** | Baseline WMA vs. N semanas historicas con pesos diferenciados |
+| **baselinedev** | Numero de desviaciones estandar (sigma) en cada punto del tiempo |
+| **trendstl** | Residuo de la descomposicion STL con umbral MAD |
 
-Grafico secundario con 3 series:
+---
 
-- **Nivel (α)** — naranja: valor promedio base constante (~42% CPU)
-- **Tendencia (β)** — verde: incremento gradual acumulado (`0.003 × t`), eje Y secundario derecho
-- **Estacionalidad (γ)** — purpura: patron ciclico diario con picos a las 09:07 h y 14:53 h
-
-### Panel de control interactivo
+## Panel de control interactivo
 
 Dos sliders permiten modificar los parametros en tiempo real y regenerar ambos graficos:
 
-- **Ancho de banda (σ)**: rango 0.5 a 4.0 — controla la sensibilidad de la deteccion
-- **Periodo de estacionalidad**: rango 60 a 1440 minutos — cambia el ciclo del patron
+- **Desviaciones (sigma)**: rango 0.5 a 4.0 — controla la sensibilidad de la deteccion
+- **Estaciones / Dias de historial / Umbral MAD**: rango variable segun el algoritmo activo
+  - `baselinewma`: Estaciones (semanas), rango 1–8, default 4
+  - `baselinedev`: Dias de historial, rango 5–30, default 10
+  - `trendstl`: Umbral MAD (sigma equiv.), rango 1–5, default 2
 
-Cada cambio recalcula las anomalias, actualiza el marcador estadistico y regenera el registro de eventos.
+Cada cambio recalcula las anomalias, actualiza los marcadores estadisticos y regenera el registro de eventos.
 
-### Estadisticas en tiempo real
+---
+
+## Estadisticas en tiempo real
 
 - Total de anomalias detectadas
 - Tasa de anomalia (% sobre total de puntos)
 - Promedio del valor real
 - Promedio del baseline
 
-### Registro de eventos
+---
 
-Log scrolleable que muestra cada anomalia con timestamp, tipo (`SPIKE ↑` / `DROP ↓`) y valor en porcentaje. Si σ es suficientemente alto para cubrir todos los picos, muestra `✓ Sin anomalias`.
+## Registro de eventos
 
-### Seccion de conceptos
+Log scrolleable que muestra cada anomalia con timestamp, tipo (`SPIKE↑` / `DROP↓`) y valor en porcentaje. Si sigma es suficientemente alto para cubrir todos los picos, muestra `✓ Sin anomalias con sigma = N`.
 
-Tres tarjetas explicativas con los parametros α, β y γ: que representa cada uno, como influye su valor alto/bajo y ejemplos de casos reales en infraestructura de red.
+**Zonas de anomalia simuladas en el dataset:**
 
-### Seccion de formulas y configuracion en Zabbix
-
-Referencia tecnica con las expresiones exactas usadas en Zabbix 6.x (ver seccion siguiente).
+| Timestamp | Tipo | CPU (%) |
+|---|---|---|
+| 05:30 | SPIKE↑ | ~72% |
+| 10:28 | SPIKE↑ | ~68% |
+| 15:05 | DROP↓ | ~18% |
+| 21:27 | SPIKE↑ | ~79% |
 
 ---
 
-## Como calcula el Baseline — Holt-Winters en Zabbix
+## Seccion de conceptos
 
-### Concepto general
+Tres tarjetas explicativas, una por algoritmo:
 
-Zabbix implementa **Holt-Winters Triple Exponential Smoothing** como algoritmo nativo de prediccion de series temporales. El modelo descompone cualquier metrica en tres componentes independientes que se actualizan continuamente con cada nueva observacion.
-
-### Los tres componentes
-
-#### α — Nivel (Level smoothing)
-
-Representa el **valor promedio suavizado** de la metrica en el momento actual. Se actualiza exponencialmente: las observaciones recientes tienen mayor peso que las antiguas.
-
-- `α alto` (cercano a 1) → el baseline reacciona rapido a cambios, memoria corta
-- `α bajo` (cercano a 0) → el baseline es estable, prioriza el historial largo
-
-#### β — Tendencia (Trend smoothing)
-
-Captura si la metrica tiene una **direccion sostenida** en el tiempo. Detecta crecimiento o decremento gradual aunque el ruido lo oculte en el corto plazo.
-
-- Ejemplo: trafico que crece 2% mensual por aumento de usuarios activos en la red
-- `β alto` → detecta nuevas tendencias rapidamente
-- `β bajo` → tendencia suave, menos reactividad al ruido puntual
-
-#### γ — Estacionalidad (Seasonal smoothing)
-
-Captura **patrones ciclicos repetitivos**: el trafico sube a las 9 AM y baja de madrugada cada dia; el CPU sube cada lunes a las 8 AM, etc.
-
-- El periodo define el ciclo: `1440` = diario (1440 min), `10080` = semanal
-- `γ alto` → los factores estacionales se actualizan rapidamente
-- `γ bajo` → patron estacional mas conservador y estable
-
-### Formula de prediccion
-
-```
-Prediccion en t+1:
-Y_hat(t+1) = (Nivel_t + Tendencia_t) x Factor_Estacional_t
-
-Banda de confianza:
-Limite_Superior = Y_hat(t+1) + sigma x Desviacion_historica
-Limite_Inferior = Y_hat(t+1) - sigma x Desviacion_historica
-
-Criterio de anomalia:
-Valor_real > Limite_Superior  -->  SPIKE (pico hacia arriba)
-Valor_real < Limite_Inferior  -->  DROP  (caida hacia abajo)
-```
-
-Donde `sigma` (σ) es el multiplicador de desviacion estandar que controla el ancho de la banda de confianza. A mayor σ, menos alertas pero mayor riesgo de omitir anomalias reales.
-
-### Configuracion en Zabbix 6.x
-
-#### Funcion de deteccion de anomalias (para triggers)
-
-```
-anomalydetection(/host/key, 1h:now/h)
-```
-
-Devuelve `1` si el valor actual esta fuera del rango predicho por el baseline. Se usa directamente en expresiones de trigger.
-
-**Ejemplo de trigger completo:**
-```
-{host:system.cpu.util.anomalydetection(1h:now/h)}=1
-```
-
-#### Funcion de desviacion estandar del baseline (para dashboards)
-
-```
-baselinedev(/host/key, 1w:now/w, 2)
-```
-
-Devuelve cuantas desviaciones estandar se aleja el valor actual del baseline semanal. El tercer parametro `2` es el multiplicador σ.
-
-#### Parametros del algoritmo en Zabbix GUI
-
-Se configuran en `Configuration → Hosts → Items → [item] → Preprocessing` o en las opciones del item al activar el baseline:
-
-| Parametro | Descripcion | Valor tipico |
+| Indice | Algoritmo | Descripcion tecnica |
 |---|---|---|
-| `Alpha (α)` | Suavizado del nivel | 0.1 – 0.3 |
-| `Beta (β)` | Suavizado de tendencia | 0.1 – 0.2 |
-| `Gamma (γ)` | Suavizado estacional | 0.1 – 0.3 |
-| `Season` | Periodo del ciclo (en intervalos de datos) | 1440 (diario a 1 min) |
+| **W** (naranja) | `baselinewma()` — Weighted Moving Average | Promedio ponderado por estacion, mas peso a semanas recientes |
+| **sigma** (verde) | `baselinedev()` — stddevpop | Numero de desviaciones estandar del valor actual vs. historial |
+| **STL** (purpura) | `trendstl()` — STL + MAD | Descomposicion LOESS + Median Absolute Deviation sobre el residuo |
 
-### Limitacion critica del metodo nativo
+---
 
-> ⚠️ **Univariado**: Zabbix analiza cada metrica de forma aislada. No puede correlacionar multiples metricas simultaneamente (CPU + RAM + Ancho de banda). Para correlacion multivariada se requiere integracion con herramientas externas (Grafana + ML, Elasticsearch, etc.).
+## Seccion de comparacion y uso en produccion
+
+### Cuado usar cada algoritmo en produccion
+
+| Algoritmo | Mejor uso | Ejemplo real |
+|---|---|---|
+| `baselinewma` | Metricas con patron semanal estable | Trafico de datos BTS, CPU de core network |
+| `baselinedev` | Alertas simples y rapidas de configurar en muchos dispositivos | Latencia PING, disponibilidad de servicios |
+| `trendstl` | Metricas complejas con anomalias sutiles | Tasa de errores CRC, retransmisiones TCP |
+
+> ⚠ Los 3 son **univariados** — no correlacionan CPU + RAM + BW simultaneamente. Para correlacion multivariada se necesita un sistema ML externo.
+
+---
+
+## Generacion de datos simulados
+
+El dataset simula 1440 puntos (24 h x 1 min) con:
+
+- **Base estacional**: funcion gaussiana con picos a las ~09:07 h y ~14:53 h (~42% CPU base)
+- **Tendencia lineal**: `+0.003 x t` (crecimiento gradual)
+- **Ruido aleatorio**: ±3% (distribucion uniforme)
+- **Anomalias inyectadas**: 4 zonas con magnitudes de +25 a +30 puntos (spikes) y -22 puntos (drop)
 
 ---
 
@@ -167,7 +191,7 @@ Se configuran en `Configuration → Hosts → Items → [item] → Preprocessing
 |---|---|
 | HTML5 / CSS3 | Estructura y estilos del dashboard |
 | [Chart.js 4.4.1](https://www.chartjs.org/) | Visualizacion de graficos interactivos |
-| JavaScript (vanilla) | Logica de simulacion Holt-Winters y controles |
+| JavaScript (vanilla) | Logica de simulacion de los 3 algoritmos y controles |
 | Google Fonts (Inter + JetBrains Mono) | Tipografia |
 | GitHub Pages | Hosting estatico del dashboard |
 
@@ -177,8 +201,8 @@ Se configuran en `Configuration → Hosts → Items → [item] → Preprocessing
 
 ```
 zabbix-anomaly-detection-baseline/
-├── index.html     # Dashboard completo (autocontenido, sin dependencias locales)
-└── README.md      # Documentacion
+├── index.html   # Dashboard completo (autocontenido, sin dependencias locales)
+└── README.md    # Documentacion
 ```
 
 ---
@@ -190,7 +214,7 @@ No requiere instalacion. Simplemente abre `index.html` en cualquier navegador mo
 ```bash
 git clone https://github.com/SimonLexRS/zabbix-anomaly-detection-baseline.git
 cd zabbix-anomaly-detection-baseline
-open index.html   # macOS
+open index.html      # macOS
 # xdg-open index.html  # Linux
 ```
 
