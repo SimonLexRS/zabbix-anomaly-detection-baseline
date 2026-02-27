@@ -2,148 +2,111 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<title>Zabbix Baseline — Holt-Winters</title>
+<title>Zabbix Baseline — Algoritmos Nativos</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-
   * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Inter','Segoe UI',sans-serif; background:#080c14; color:#cbd5e1; min-height:100vh; padding:28px 24px; }
 
-  body {
-    font-family: 'Inter', 'Segoe UI', sans-serif;
-    background: #080c14;
-    color: #cbd5e1;
-    min-height: 100vh;
-    padding: 28px 24px;
-  }
+  .page-header { max-width:1200px; margin:0 auto 24px; padding-bottom:18px; border-bottom:1px solid #1e2d42; }
+  .page-header h1 { font-size:1.05rem; font-weight:600; color:#f1f5f9; letter-spacing:0.3px; margin-bottom:4px; }
+  .page-header h1 span { color:#e07b39; }
+  .page-header p { font-size:0.78rem; color:#475569; }
+  .badge { display:inline-block; font-size:0.65rem; font-weight:600; letter-spacing:0.8px; text-transform:uppercase; padding:2px 8px; border-radius:4px; background:#1a2740; color:#64748b; border:1px solid #1e3050; margin-right:8px; vertical-align:middle; }
 
-  .page-header {
-    max-width: 1200px;
-    margin: 0 auto 24px;
-    padding-bottom: 18px;
-    border-bottom: 1px solid #1e2d42;
-  }
-  .page-header h1 {
-    font-size: 1.05rem;
-    font-weight: 600;
-    color: #f1f5f9;
-    letter-spacing: 0.3px;
-    margin-bottom: 4px;
-  }
-  .page-header h1 span { color: #e07b39; }
-  .page-header p { font-size: 0.78rem; color: #475569; }
-  .badge {
-    display: inline-block;
-    font-size: 0.65rem;
-    font-weight: 600;
-    letter-spacing: 0.8px;
-    text-transform: uppercase;
-    padding: 2px 8px;
-    border-radius: 4px;
-    background: #1a2740;
-    color: #64748b;
-    border: 1px solid #1e3050;
-    margin-right: 8px;
-    vertical-align: middle;
-  }
+  .card { background:#0d1520; border:1px solid #1a2740; border-radius:8px; padding:18px 20px; }
+  .card-title { font-size:0.7rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:#334155; margin-bottom:14px; padding-bottom:10px; border-bottom:1px solid #1a2740; }
+  .card-title span { color:#e07b39; margin-right:6px; }
 
-  .card {
-    background: #0d1520;
-    border: 1px solid #1a2740;
-    border-radius: 8px;
-    padding: 18px 20px;
-  }
-  .card-title {
-    font-size: 0.7rem;
-    font-weight: 600;
-    letter-spacing: 1px;
-    text-transform: uppercase;
-    color: #334155;
-    margin-bottom: 14px;
-    padding-bottom: 10px;
-    border-bottom: 1px solid #1a2740;
-  }
-  .card-title span { color: #e07b39; margin-right: 6px; }
+  /* Tab selector */
+  .algo-tabs { display:flex; gap:4px; max-width:1200px; margin:0 auto 12px; }
+  .algo-tab { padding:7px 16px; border-radius:6px 6px 0 0; border:1px solid #1a2740; border-bottom:none; font-size:0.72rem; font-weight:600; cursor:pointer; font-family:'JetBrains Mono',monospace; background:#080c14; color:#475569; transition:all 0.15s; }
+  .algo-tab:hover { color:#94a3b8; }
+  .algo-tab.active { background:#0d1520; color:#e07b39; border-color:#1a2740; }
 
-  .top-section { display: grid; grid-template-columns: 1fr 300px; gap: 16px; max-width: 1200px; margin: 0 auto; }
-  .charts-col { display: flex; flex-direction: column; gap: 16px; }
-  canvas { max-height: 250px; }
+  .top-section { display:grid; grid-template-columns:1fr 300px; gap:16px; max-width:1200px; margin:0 auto; }
+  .charts-col { display:flex; flex-direction:column; gap:16px; }
+  canvas { max-height:250px; }
+  .panel { display:flex; flex-direction:column; gap:14px; min-width:0; }
 
-  .panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+  .legend { display:flex; flex-direction:column; gap:9px; }
+  .legend-item { display:flex; align-items:flex-start; gap:10px; }
+  .l-icon { flex-shrink:0; }
+  .l-line { width:20px; height:2px; border-radius:1px; margin-top:9px; }
+  .l-dash { width:20px; height:0; border-top:2px dashed; margin-top:9px; }
+  .l-band { width:20px; height:10px; border-radius:3px; opacity:0.4; margin-top:4px; }
+  .l-dot  { width:10px; height:10px; border-radius:50%; margin-top:5px; }
+  .legend-text strong { font-size:0.78rem; font-weight:600; color:#e2e8f0; display:block; }
+  .legend-text p { font-size:0.71rem; color:#475569; margin-top:2px; line-height:1.5; }
 
-  .legend { display: flex; flex-direction: column; gap: 9px; }
-  .legend-item { display: flex; align-items: flex-start; gap: 10px; }
-  .l-icon { flex-shrink: 0; }
-  .l-line  { width: 20px; height: 2px; border-radius: 1px; margin-top: 9px; }
-  .l-dash  { width: 20px; height: 0; border-top: 2px dashed; margin-top: 9px; }
-  .l-band  { width: 20px; height: 10px; border-radius: 3px; opacity: 0.4; margin-top: 4px; }
-  .l-dot   { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
-  .legend-text strong { font-size: 0.78rem; font-weight: 600; color: #e2e8f0; display: block; }
-  .legend-text p { font-size: 0.71rem; color: #475569; margin-top: 2px; line-height: 1.5; }
+  .slider-group { display:flex; flex-direction:column; gap:14px; }
+  .slider-row { display:flex; flex-direction:column; gap:6px; }
+  .slider-header { display:flex; justify-content:space-between; align-items:center; width:100%; }
+  .slider-header label { font-size:0.72rem; color:#64748b; font-weight:500; }
+  .slider-val { font-size:0.72rem; font-weight:700; color:#e07b39; font-family:'JetBrains Mono',monospace; white-space:nowrap; }
+  input[type=range] { width:100%; accent-color:#e07b39; cursor:pointer; }
+  .slider-hint { font-size:0.68rem; color:#334155; line-height:1.6; margin-top:6px; }
 
-  /* FIXED sliders */
-  .slider-group { display: flex; flex-direction: column; gap: 14px; }
-  .slider-row { display: flex; flex-direction: column; gap: 6px; }
-  .slider-header { display: flex; justify-content: space-between; align-items: center; width: 100%; }
-  .slider-header label { font-size: 0.72rem; color: #64748b; font-weight: 500; }
-  .slider-val {
-    font-size: 0.72rem; font-weight: 700;
-    color: #e07b39;
-    font-family: 'JetBrains Mono', monospace;
-    white-space: nowrap;
-  }
-  input[type=range] { width: 100%; accent-color: #e07b39; cursor: pointer; }
-  .slider-hint { font-size: 0.68rem; color: #334155; line-height: 1.6; margin-top: 6px; }
+  .stats { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+  .stat { background:#080c14; border:1px solid #1a2740; border-radius:6px; padding:10px 12px; }
+  .stat-label { font-size:0.65rem; color:#334155; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px; }
+  .stat-value { font-size:1rem; font-weight:700; font-family:'JetBrains Mono',monospace; }
 
-  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .stat { background: #080c14; border: 1px solid #1a2740; border-radius: 6px; padding: 10px 12px; }
-  .stat-label { font-size: 0.65rem; color: #334155; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
-  .stat-value { font-size: 1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
-
-  .anomaly-log { display: flex; flex-direction: column; gap: 5px; max-height: 110px; overflow-y: auto; }
-  .anomaly-log::-webkit-scrollbar { width: 3px; }
-  .anomaly-log::-webkit-scrollbar-thumb { background: #1e2d42; border-radius: 2px; }
-  .anomaly-entry { font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; padding: 5px 9px; border-radius: 4px; border-left: 2px solid; line-height: 1.4; }
-  .anomaly-entry.spike { background: #7f1d1d18; border-color: #dc2626; color: #fca5a5; }
-  .anomaly-entry.drop  { background: #1e3a5f18; border-color: #3b82f6; color: #93c5fd; }
-  .anomaly-entry.ok    { background: #14532d18; border-color: #16a34a; color: #6ee7b7; font-style: italic; }
+  .anomaly-log { display:flex; flex-direction:column; gap:5px; max-height:110px; overflow-y:auto; }
+  .anomaly-log::-webkit-scrollbar { width:3px; }
+  .anomaly-log::-webkit-scrollbar-thumb { background:#1e2d42; border-radius:2px; }
+  .anomaly-entry { font-size:0.7rem; font-family:'JetBrains Mono',monospace; padding:5px 9px; border-radius:4px; border-left:2px solid; line-height:1.4; }
+  .anomaly-entry.spike { background:#7f1d1d18; border-color:#dc2626; color:#fca5a5; }
+  .anomaly-entry.drop  { background:#1e3a5f18; border-color:#3b82f6; color:#93c5fd; }
+  .anomaly-entry.ok    { background:#14532d18; border-color:#16a34a; color:#6ee7b7; font-style:italic; }
 
   /* Concepts */
-  .concepts-section { max-width: 1200px; margin: 16px auto 0; display: flex; flex-direction: column; gap: 12px; }
-  .concepts-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+  .concepts-section { max-width:1200px; margin:16px auto 0; display:flex; flex-direction:column; gap:12px; }
+  .algo-description { background:#0d1520; border:1px solid #1a2740; border-radius:8px; padding:18px 20px; }
+  .algo-description-grid { display:grid; grid-template-columns:1fr 1fr; gap:28px; }
 
-  .concept-card { background: #0d1520; border: 1px solid #1a2740; border-radius: 8px; padding: 16px; }
-  .concept-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #1a2740; }
-  .concept-index { font-size: 0.75rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .concept-index.orange { background: #c2601e; color: #fff; }
-  .concept-index.green  { background: #15803d; color: #fff; }
-  .concept-index.purple { background: #6d28d9; color: #fff; }
-  .concept-title { font-size: 0.78rem; font-weight: 600; color: #e2e8f0; }
-  .concept-subtitle { font-size: 0.65rem; color: #475569; margin-top: 1px; font-family: 'JetBrains Mono', monospace; }
-  .concept-body { font-size: 0.73rem; color: #64748b; line-height: 1.75; }
-  .concept-body strong { color: #94a3b8; font-weight: 500; }
-  .concept-body code { font-family: 'JetBrains Mono', monospace; font-size: 0.69rem; padding: 1px 5px; border-radius: 3px; background: #080c14; border: 1px solid #1a2740; }
-  .concept-body code.orange { color: #e07b39; }
-  .concept-body code.green  { color: #4ade80; }
-  .concept-body code.purple { color: #a78bfa; }
+  .concepts-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  .concept-card { background:#0d1520; border:1px solid #1a2740; border-radius:8px; padding:16px; }
+  .concept-card-header { display:flex; align-items:center; gap:10px; margin-bottom:12px; padding-bottom:10px; border-bottom:1px solid #1a2740; }
+  .concept-index { font-size:0.7rem; font-weight:700; font-family:'JetBrains Mono',monospace; width:26px; height:26px; border-radius:4px; display:flex; align-items:center; justify-content:center; flex-shrink:0; }
+  .concept-index.orange { background:#c2601e; color:#fff; }
+  .concept-index.green  { background:#15803d; color:#fff; }
+  .concept-index.purple { background:#6d28d9; color:#fff; }
+  .concept-title { font-size:0.78rem; font-weight:600; color:#e2e8f0; }
+  .concept-subtitle { font-size:0.65rem; color:#475569; margin-top:1px; font-family:'JetBrains Mono',monospace; }
+  .concept-body { font-size:0.73rem; color:#64748b; line-height:1.75; }
+  .concept-body strong { color:#94a3b8; font-weight:500; }
+  .concept-body code { font-family:'JetBrains Mono',monospace; font-size:0.69rem; padding:1px 5px; border-radius:3px; background:#080c14; border:1px solid #1a2740; }
+  .concept-body code.orange { color:#e07b39; }
+  .concept-body code.green  { color:#4ade80; }
+  .concept-body code.purple { color:#a78bfa; }
+  .concept-body code.blue   { color:#60a5fa; }
+  .concept-body code.red    { color:#f87171; }
 
-  .formula-card { background: #0d1520; border: 1px solid #1a2740; border-radius: 8px; padding: 18px 20px; }
-  .formula-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-  .formula-col-title { font-size: 0.65rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #334155; margin-bottom: 12px; }
-  .formula-line { font-size: 0.73rem; color: #64748b; margin-bottom: 8px; line-height: 1.65; }
-  .formula-line strong { color: #94a3b8; font-weight: 500; }
-  .formula-line code { font-family: 'JetBrains Mono', monospace; font-size: 0.69rem; padding: 2px 6px; border-radius: 3px; background: #080c14; border: 1px solid #1a2740; display: inline-block; margin-top: 3px; }
-  .formula-line code.orange { color: #e07b39; }
-  .formula-line code.blue   { color: #60a5fa; }
-  .formula-line code.red    { color: #f87171; }
-  .formula-line code.green  { color: #4ade80; }
-  .formula-divider { border: none; border-top: 1px solid #1a2740; margin: 10px 0; }
-  .limitation-pill { display: inline-flex; align-items: flex-start; gap: 6px; font-size: 0.68rem; color: #f87171; background: #7f1d1d18; border: 1px solid #7f1d1d44; border-radius: 4px; padding: 6px 10px; margin-top: 6px; line-height: 1.5; }
+  .formula-grid { display:grid; grid-template-columns:1fr 1fr; gap:28px; }
+  .formula-col-title { font-size:0.65rem; font-weight:600; letter-spacing:1px; text-transform:uppercase; color:#334155; margin-bottom:12px; }
+  .formula-line { font-size:0.73rem; color:#64748b; margin-bottom:8px; line-height:1.65; }
+  .formula-line strong { color:#94a3b8; font-weight:500; }
+  .formula-line code { font-family:'JetBrains Mono',monospace; font-size:0.69rem; padding:2px 6px; border-radius:3px; background:#080c14; border:1px solid #1a2740; display:inline-block; margin-top:3px; }
+  .formula-line code.orange { color:#e07b39; }
+  .formula-line code.blue   { color:#60a5fa; }
+  .formula-line code.red    { color:#f87171; }
+  .formula-line code.green  { color:#4ade80; }
+  .formula-line code.purple { color:#a78bfa; }
+  .formula-divider { border:none; border-top:1px solid #1a2740; margin:10px 0; }
+  .limitation-pill { display:inline-flex; align-items:flex-start; gap:6px; font-size:0.68rem; color:#f87171; background:#7f1d1d18; border:1px solid #7f1d1d44; border-radius:4px; padding:6px 10px; margin-top:6px; line-height:1.5; }
+  .algo-badge { display:inline-flex; align-items:center; gap:5px; font-size:0.67rem; font-weight:600; font-family:'JetBrains Mono',monospace; padding:3px 8px; border-radius:4px; margin-bottom:10px; }
+  .algo-badge.wma    { background:#1a2e1a; border:1px solid #166534; color:#4ade80; }
+  .algo-badge.std    { background:#1a1a2e; border:1px solid #1e40af; color:#60a5fa; }
+  .algo-badge.stl    { background:#2a1a2e; border:1px solid #6d28d9; color:#a78bfa; }
+  .hidden { display:none; }
 
   @media(max-width:900px){
     .top-section{grid-template-columns:1fr;}
     .concepts-grid{grid-template-columns:1fr;}
     .formula-grid{grid-template-columns:1fr;}
+    .algo-description-grid{grid-template-columns:1fr;}
   }
 </style>
 </head>
@@ -151,45 +114,50 @@
 
 <div class="page-header">
   <h1>
-    <span class="badge">ZABBIX ML</span>
-    Baseline Nativo — <span>Holt-Winters Triple Exponential Smoothing</span>
+    <span class="badge">ZABBIX 6.0+</span>
+    Baseline y Anomaly Detection — <span>Algoritmos Nativos Reales</span>
   </h1>
-  <p>Cómo Zabbix predice el comportamiento normal de una métrica de red y detecta desviaciones automáticamente</p>
+  <p>baselinewma (WMA) · baselinedev (stddevpop) · trendstl (STL + MAD) — comparación de los 3 métodos nativos de Zabbix</p>
+</div>
+
+<!-- Tabs -->
+<div class="algo-tabs">
+  <div class="algo-tab active" onclick="switchAlgo('wma',this)">baselinewma()</div>
+  <div class="algo-tab" onclick="switchAlgo('baselinedev',this)">baselinedev()</div>
+  <div class="algo-tab" onclick="switchAlgo('stl',this)">trendstl()</div>
 </div>
 
 <div class="top-section">
-
   <div class="charts-col">
     <div class="card">
-      <div class="card-title"><span>▸</span>CPU UTILIZATION — BTS LA PAZ NORTE &nbsp;·&nbsp; Últimas 24 h &nbsp;·&nbsp; resolución 1 min</div>
+      <div class="card-title" id="mainChartTitle"><span>▸</span>CPU UTILIZATION — BTS LA PAZ NORTE · Últimas 24h · resolución 1 min</div>
       <canvas id="mainChart"></canvas>
     </div>
     <div class="card">
-      <div class="card-title"><span>▸</span>DESCOMPOSICIÓN DEL BASELINE — Nivel · Tendencia · Estacionalidad</div>
+      <div class="card-title" id="compChartTitle"><span>▸</span>BASELINE WMA — Promedio ponderado de mismos períodos en estaciones previas</div>
       <canvas id="compChart"></canvas>
     </div>
   </div>
 
   <div class="panel">
-
     <div class="card">
       <div class="card-title"><span>▸</span>Elementos del gráfico</div>
       <div class="legend">
         <div class="legend-item">
           <div class="l-icon l-line" style="background:#60a5fa;"></div>
-          <div class="legend-text"><strong>Valor real (métrica)</strong><p>Lo que Zabbix mide cada minuto: CPU %, ancho de banda, latencia…</p></div>
+          <div class="legend-text"><strong>Valor real (métrica)</strong><p>CPU % medido por Zabbix cada minuto desde el agente.</p></div>
         </div>
         <div class="legend-item">
           <div class="l-icon l-dash" style="border-color:#e07b39;"></div>
-          <div class="legend-text"><strong>Baseline (predicción H-W)</strong><p>Lo que Zabbix espera ver, calculado a partir de los 3 componentes.</p></div>
+          <div class="legend-text"><strong id="baselineLegendTitle">Baseline WMA</strong><p id="baselineLegendText">Promedio ponderado del mismo período en semanas anteriores.</p></div>
         </div>
         <div class="legend-item">
           <div class="l-icon l-band" style="background:#e07b39;"></div>
-          <div class="legend-text"><strong>Banda de confianza (σ)</strong><p>Rango "normal". Valores fuera = anomalía. Ancho controlado por σ.</p></div>
+          <div class="legend-text"><strong>Banda de tolerancia</strong><p>±σ desviaciones. Fuera = anomalía.</p></div>
         </div>
         <div class="legend-item">
           <div class="l-icon l-dot" style="background:#ef4444;"></div>
-          <div class="legend-text"><strong>Anomalía detectada</strong><p>Punto que salió de la banda. Zabbix puede disparar un trigger aquí.</p></div>
+          <div class="legend-text"><strong>Anomalía detectada</strong><p>Punto fuera de la banda. Trigger de Zabbix se dispara.</p></div>
         </div>
       </div>
     </div>
@@ -199,44 +167,32 @@
       <div class="slider-group">
         <div class="slider-row">
           <div class="slider-header">
-            <label>Ancho de banda (σ)</label>
+            <label>Desviaciones (σ)</label>
             <span class="slider-val" id="sigmaVal">2.0</span>
           </div>
           <input type="range" id="sigma" min="0.5" max="4" step="0.1" value="2">
         </div>
         <div class="slider-row">
           <div class="slider-header">
-            <label>Estacionalidad (período)</label>
-            <span class="slider-val" id="periodVal">1440 min</span>
+            <label id="periodLabel">Estaciones (semanas)</label>
+            <span class="slider-val" id="periodVal">4</span>
           </div>
-          <input type="range" id="period" min="60" max="1440" step="60" value="1440">
+          <input type="range" id="period" min="1" max="8" step="1" value="4">
         </div>
       </div>
-      <p class="slider-hint">
-        σ bajo → más sensible, mayor tasa de falsos positivos.<br>
-        σ alto → menos alertas, riesgo de omitir anomalías reales.
+      <p class="slider-hint" id="sliderHint">
+        Más estaciones = baseline más robusto, requiere más historial.<br>
+        σ alto = banda ancha = menos alertas pero puede omitir anomalías.
       </p>
     </div>
 
     <div class="card">
       <div class="card-title"><span>▸</span>Estadísticas</div>
       <div class="stats">
-        <div class="stat">
-          <div class="stat-label">Anomalías</div>
-          <div class="stat-value" id="statAnom" style="color:#ef4444;">0</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Tasa</div>
-          <div class="stat-value" id="statRate" style="color:#e07b39;">0%</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Promedio real</div>
-          <div class="stat-value" id="statMean" style="color:#60a5fa;">—</div>
-        </div>
-        <div class="stat">
-          <div class="stat-label">Baseline prom.</div>
-          <div class="stat-value" id="statBase" style="color:#e07b39;">—</div>
-        </div>
+        <div class="stat"><div class="stat-label">Anomalías</div><div class="stat-value" id="statAnom" style="color:#ef4444;">0</div></div>
+        <div class="stat"><div class="stat-label">Tasa</div><div class="stat-value" id="statRate" style="color:#e07b39;">0%</div></div>
+        <div class="stat"><div class="stat-label">Promedio real</div><div class="stat-value" id="statMean" style="color:#60a5fa;">—</div></div>
+        <div class="stat"><div class="stat-label">Baseline prom.</div><div class="stat-value" id="statBase" style="color:#e07b39;">—</div></div>
       </div>
     </div>
 
@@ -246,306 +202,528 @@
         <div class="anomaly-entry ok">✓  Sin anomalías detectadas</div>
       </div>
     </div>
-
   </div>
 </div>
 
-<!-- Concepts -->
+<!-- Concepts section -->
 <div class="concepts-section">
 
+  <!-- 3 function cards -->
   <div class="concepts-grid">
 
     <div class="concept-card">
       <div class="concept-card-header">
-        <div class="concept-index orange">α</div>
+        <div class="concept-index orange">W</div>
         <div>
-          <div class="concept-title">Nivel (Level)</div>
-          <div class="concept-subtitle">Parámetro α — level smoothing</div>
+          <div class="concept-title">baselinewma()</div>
+          <div class="concept-subtitle">Weighted Moving Average</div>
         </div>
       </div>
       <div class="concept-body">
-        El valor <strong>promedio actual</strong> de la métrica, actualizado en cada nueva observación.<br><br>
-        Si el CPU de un BTS normalmente opera al 45 %, ese es el nivel base del baseline.<br><br>
-        <code class="orange">α alto</code> → el baseline sigue los cambios rápidamente (memoria corta).<br>
-        <code class="orange">α bajo</code> → el baseline es estable, prioriza el historial largo.
+        <div class="algo-badge wma">● WMA</div><br>
+        Calcula el baseline promediando los datos del <strong>mismo período en N estaciones anteriores</strong>, con pesos que dan más importancia a las estaciones más recientes.<br><br>
+        Ejemplo: el tráfico de lunes 9-10 AM en las últimas 4 semanas.<br><br>
+        <code class="orange">baselinewma(/host/key, 1h:now/h, "w", 4)</code><br><br>
+        <code class="green">Semana más reciente</code> → mayor peso<br>
+        <code class="green">Semana más antigua</code> → menor peso
       </div>
     </div>
 
     <div class="concept-card">
       <div class="concept-card-header">
-        <div class="concept-index green">β</div>
+        <div class="concept-index green">σ</div>
         <div>
-          <div class="concept-title">Tendencia (Trend)</div>
-          <div class="concept-subtitle">Parámetro β — trend smoothing</div>
+          <div class="concept-title">baselinedev()</div>
+          <div class="concept-subtitle">stddevpop — Desviación estándar poblacional</div>
         </div>
       </div>
       <div class="concept-body">
-        Captura si la métrica tiene una <strong>dirección sostenida</strong> en el tiempo: crecimiento o decremento gradual.<br><br>
-        Ejemplo: el tráfico crece 2 % mensual por aumento de usuarios activos.<br><br>
-        <code class="green">β alto</code> → detecta nuevas tendencias con rapidez.<br>
-        <code class="green">β bajo</code> → tendencia suave, menos reactividad al ruido.
+        <div class="algo-badge std">● stddevpop</div><br>
+        Retorna <strong>cuántas desviaciones estándar</strong> se aleja el período actual respecto a los mismos períodos históricos.<br><br>
+        Devuelve un número: <code class="blue">0</code> = normal, <code class="blue">3</code> = muy anómalo.<br><br>
+        <code class="blue">baselinedev(/host/key, 1h:now/h, "d", 10)</code><br><br>
+        Úsalo en trigger: <code class="red">baselinedev(...) > 3</code><br>
+        significa "valor actual está a más de 3σ del historial de los últimos 10 días".
       </div>
     </div>
 
     <div class="concept-card">
       <div class="concept-card-header">
-        <div class="concept-index purple">γ</div>
+        <div class="concept-index purple">STL</div>
         <div>
-          <div class="concept-title">Estacionalidad (Seasonality)</div>
-          <div class="concept-subtitle">Parámetro γ — seasonal smoothing</div>
+          <div class="concept-title">trendstl()</div>
+          <div class="concept-subtitle">STL Decomposition + MAD</div>
         </div>
       </div>
       <div class="concept-body">
-        Patrones que se <strong>repiten periódicamente</strong>: el tráfico sube a las 9 AM y baja de madrugada, cada día.<br><br>
-        El período define el ciclo: <code class="purple">1440</code> = diario, <code class="purple">10080</code> = semanal.<br><br>
-        <code class="purple">γ alto</code> → factores estacionales se actualizan rápido.<br>
-        <code class="purple">γ bajo</code> → patrón estacional más conservador y estable.
+        <div class="algo-badge stl">● STL + MAD</div><br>
+        El más avanzado. Descompone la serie temporal en <strong>Tendencia + Estacionalidad + Residuo</strong> (LOESS), luego aplica MAD (Median Absolute Deviation) al residuo para detectar anomalías.<br><br>
+        Retorna una <code class="purple">tasa de anomalías</code> (0.0 a 1.0).<br><br>
+        <code class="purple">trendstl(/host/key, 28d:now/d, 1d, 7d)</code><br><br>
+        Analiza 28 días, detecta en el último día, estacionalidad semanal.
       </div>
     </div>
 
   </div>
 
-  <div class="formula-card">
+  <!-- Formula comparison -->
+  <div class="card">
     <div class="card-title" style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #1a2740;">
-      <span style="color:#e07b39;">▸</span> CÁLCULO DEL BASELINE — Fórmula y configuración en Zabbix
+      <span style="color:#e07b39;">▸</span> COMPARACIÓN DE ALGORITMOS — Cuándo usar cada uno en producción (VIVA)
     </div>
     <div class="formula-grid">
       <div>
-        <div class="formula-col-title">Predicción Holt-Winters</div>
+        <div class="formula-col-title">Sintaxis y uso típico</div>
         <div class="formula-line">
-          <strong>Predicción en t+1:</strong><br>
-          <code class="orange">Ŷ(t+1) = (Nivel_t + Tendencia_t) × Factor_Estacional_t</code>
+          <strong>baselinewma — threshold dinámico:</strong><br>
+          <code class="orange">trendavg(/host/key,1h:now/h) > baselinewma(/host/key,1h,"w",4) * 1.5</code>
         </div>
+        <div class="formula-line">El tráfico de esta hora supera 1.5× el promedio de las últimas 4 semanas.</div>
         <hr class="formula-divider">
         <div class="formula-line">
-          <strong>Banda de confianza:</strong><br>
-          <code class="blue">Límite Superior = Ŷ(t+1) + σ × Desviación_histórica</code>
+          <strong>baselinedev — número de desviaciones:</strong><br>
+          <code class="blue">baselinedev(/host/key,1h:now/h,"d",10) > 3</code>
         </div>
-        <div class="formula-line">
-          <code class="blue">Límite Inferior  = Ŷ(t+1) − σ × Desviación_histórica</code>
-        </div>
+        <div class="formula-line">El valor de esta hora está a más de 3σ del mismo horario en los últimos 10 días.</div>
         <hr class="formula-divider">
         <div class="formula-line">
-          <strong>Criterio de anomalía:</strong><br>
-          <code class="red">Valor_real &gt; Límite Superior  →  SPIKE ↑</code>
+          <strong>trendstl — tasa de anomalías (el más potente):</strong><br>
+          <code class="purple">trendstl(/host/key,28d:now/d,1d,7d) > 0.3</code>
         </div>
-        <div class="formula-line">
-          <code class="red">Valor_real &lt; Límite Inferior   →  DROP ↓</code>
-        </div>
+        <div class="formula-line">Más del 30% de los valores del último día son anómalos vs. las últimas 4 semanas con patrón semanal.</div>
       </div>
       <div>
-        <div class="formula-col-title">Configuración en Zabbix 6.x</div>
+        <div class="formula-col-title">Cuándo usar cada uno en VIVA</div>
         <div class="formula-line">
-          <strong>Función de detección (trigger expression):</strong><br>
-          <code class="green">anomalydetection(/host/key, 1h:now/h)</code>
+          <strong>baselinewma →</strong> métricas con patrón semanal estable.<br>
+          <code class="orange">Tráfico de datos BTS, CPU de core network</code>
         </div>
-        <div class="formula-line">Devuelve <code>1</code> si el valor actual está fuera del rango predicho por el baseline.</div>
+        <div class="formula-line">Ideal para interfaces de transporte donde el tráfico lunes-viernes es predecible.</div>
         <hr class="formula-divider">
         <div class="formula-line">
-          <strong>Función de desviación (para dashboards):</strong><br>
-          <code class="green">baselinedev(/host/key, 1w:now/w, 2)</code>
+          <strong>baselinedev →</strong> alertas simples y rápidas de configurar.<br>
+          <code class="blue">Latencia PING, disponibilidad de servicios</code>
         </div>
-        <div class="formula-line">Devuelve cuántas desviaciones estándar se aleja el valor del baseline semanal.</div>
+        <div class="formula-line">Rápido de implementar en los 2,000+ dispositivos con bajo overhead.</div>
         <hr class="formula-divider">
-        <div class="formula-line"><strong>Limitación crítica del método nativo:</strong></div>
+        <div class="formula-line">
+          <strong>trendstl →</strong> métricas complejas con anomalías sutiles.<br>
+          <code class="purple">Tasa de errores CRC, retransmisiones TCP</code>
+        </div>
+        <div class="formula-line">Requiere más historial (mínimo 28 días) pero detecta anomalías que los otros métodos no ven.</div>
+        <hr class="formula-divider">
         <div class="limitation-pill">
-          ⚠&nbsp; Univariado — analiza cada métrica en aislamiento. No puede correlacionar CPU + RAM + BW simultáneamente.
+          ⚠ Los 3 son univariados — no correlacionan CPU + RAM + BW simultáneamente. Para eso se necesita el sistema ML externo.
         </div>
       </div>
     </div>
   </div>
 
-</div>
+</div><!-- end concepts-section -->
 
 <script>
-function generateData(n,sigma,per){
-  n=n||1440; sigma=sigma||2; per=per||1440;
-  var labels=[],real=[],baseline=[],upper=[],lower=[],anomalies=[];
-  // per = período estacional en minutos
-  // Cuando per es corto (ej. 60min) los picos se repiten cada hora
-  // Cuando per es largo (1440min = 1 día) el patrón es diario
-  function seasonal(t){
-    var h=(t%per)/per;  // posición normalizada dentro del período
-    // Pico de mañana y tarde (relativos al período)
-    var m1=22*Math.exp(-0.5*Math.pow((h-0.38)/0.06,2));
-    var m2=18*Math.exp(-0.5*Math.pow((h-0.62)/0.07,2));
-    var m3=-5*Math.exp(-0.5*Math.pow((h-0.90)/0.08,2));
-    // A períodos cortos la amplitud se reduce para que tenga sentido visual
-    var scale=Math.min(1, per/480);
-    return 42+(m1+m2+m3)*scale;
-  }
-  function noise(){ return (Math.random()-0.5)*6; }
-  var zones=[
-    {start:320,end:340,mag:28},{start:620,end:635,mag:25},
-    {start:900,end:910,mag:-22},{start:1280,end:1295,mag:30}
-  ];
-  function getAnomMag(t){
-    for(var i=0;i<zones.length;i++){
-      var z=zones[i];
-      if(t>=z.start&&t<=z.end){
-        var c=(z.start+z.end)/2,hw=(z.end-z.start)/2;
-        return z.mag*Math.exp(-0.5*Math.pow((t-c)/hw,2));
-      }
+// ── Data generators ──────────────────────────────────────────────────
+
+function seasonalBase(t, per) {
+  var h = (t % per) / per;
+  var m1 = 22 * Math.exp(-0.5 * Math.pow((h - 0.38) / 0.06, 2));
+  var m2 = 18 * Math.exp(-0.5 * Math.pow((h - 0.62) / 0.07, 2));
+  var m3 = -5 * Math.exp(-0.5 * Math.pow((h - 0.90) / 0.08, 2));
+  var scale = Math.min(1, per / 480);
+  return 42 + (m1 + m2 + m3) * scale;
+}
+
+function noise() { return (Math.random() - 0.5) * 6; }
+
+var ANOM_ZONES = [
+  {start:320, end:340, mag:28},
+  {start:620, end:635, mag:25},
+  {start:900, end:910, mag:-22},
+  {start:1280, end:1295, mag:30}
+];
+
+function getAnomMag(t) {
+  for (var i = 0; i < ANOM_ZONES.length; i++) {
+    var z = ANOM_ZONES[i];
+    if (t >= z.start && t <= z.end) {
+      var c = (z.start + z.end) / 2, hw = (z.end - z.start) / 2;
+      return z.mag * Math.exp(-0.5 * Math.pow((t - c) / hw, 2));
     }
-    return 0;
   }
-  var std=5.5;
-  for(var t=0;t<n;t++){
-    var h=Math.floor(t/60),m=t%60;
-    labels.push((h<10?'0':'')+h+':'+(m<10?'0':'')+m);
-    var base=seasonal(t)+0.003*t;
-    var anom=getAnomMag(t);
-    var val=Math.max(0,Math.min(100,base+noise()+anom));
-    var up=base+sigma*std;
-    var lo=Math.max(0,base-sigma*std);
-    var isAnom=(val>up||val<lo)&&Math.abs(val-base)>3;
+  return 0;
+}
+
+// WMA baseline: weighted average of same slot across N "seasons" (each = 1440 min)
+// weights: most recent season gets highest weight
+function generateWMA(n, seasons, sigma) {
+  n = n || 1440; seasons = seasons || 4; sigma = sigma || 2;
+  var real = [], baseline = [], upper = [], lower = [], anomalies = [], labels = [];
+  var seasonWeights = [];
+  for (var s = 0; s < seasons; s++) seasonWeights.push(seasons - s); // [4,3,2,1]
+  var weightSum = seasonWeights.reduce(function(a, b) { return a + b; }, 0);
+
+  for (var t = 0; t < n; t++) {
+    var h = Math.floor(t / 60), m = t % 60;
+    labels.push((h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m);
+
+    // Compute WMA baseline: average of same time slot in previous seasons
+    var wmaBase = 0;
+    for (var s = 0; s < seasons; s++) {
+      var pastBase = seasonalBase(t, 1440) + 0.003 * t; // past season approximation
+      // Add slight variation per season to simulate real historical variation
+      var seasonNoise = (s * 2.3 - seasons * 1.1) * 0.5;
+      wmaBase += (pastBase + seasonNoise) * seasonWeights[s];
+    }
+    wmaBase = wmaBase / weightSum;
+
+    var trueBase = seasonalBase(t, 1440) + 0.003 * t;
+    var std = 5.0;
+    var anom = getAnomMag(t);
+    var val = Math.max(0, Math.min(100, trueBase + noise() + anom));
+    var up = wmaBase + sigma * std;
+    var lo = Math.max(0, wmaBase - sigma * std);
+    var isAnom = (val > up || val < lo) && Math.abs(val - wmaBase) > 3;
+
     real.push(+val.toFixed(1));
-    baseline.push(+base.toFixed(1));
+    baseline.push(+wmaBase.toFixed(1));
     upper.push(+up.toFixed(1));
     lower.push(+lo.toFixed(1));
-    anomalies.push(isAnom?val:null);
+    anomalies.push(isAnom ? val : null);
   }
-  return {labels:labels,real:real,baseline:baseline,upper:upper,lower:lower,anomalies:anomalies};
+  return {labels: labels, real: real, baseline: baseline, upper: upper, lower: lower, anomalies: anomalies};
 }
 
-function generateComponents(n,per){
-  n=n||1440; per=per||1440;
-  var labels=[],level=[],trendArr=[],seasonArr=[];
-  for(var t=0;t<n;t++){
-    var h=Math.floor(t/60),m=t%60;
-    labels.push((h<10?'0':'')+h+':'+(m<10?'0':'')+m);
-    var s=(t%per)/per;
-    var scale=Math.min(1, per/480);
-    var m1=22*Math.exp(-0.5*Math.pow((s-0.38)/0.06,2));
-    var m2=18*Math.exp(-0.5*Math.pow((s-0.62)/0.07,2));
-    var m3=-5*Math.exp(-0.5*Math.pow((s-0.9)/0.08,2));
-    level.push(42);
-    trendArr.push(+(0.003*t).toFixed(2));
-    seasonArr.push(+((m1+m2+m3)*scale).toFixed(2));
+// baselinedev: returns sigma deviations value at each point
+function generateBaselineDev(n, histDays, sigma) {
+  n = n || 1440; histDays = histDays || 4; sigma = sigma || 2;
+  var real = [], baseline = [], upper = [], lower = [], anomalies = [], deviations = [], labels = [];
+
+  for (var t = 0; t < n; t++) {
+    var h = Math.floor(t / 60), m = t % 60;
+    labels.push((h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m);
+
+    var trueBase = seasonalBase(t, 1440) + 0.003 * t;
+    // stddevpop baseline = mean of same slot across histDays
+    var slotMean = trueBase;
+    var slotStd = 4.5 + Math.sin(t / 200) * 1.5; // variability of std across day
+    var up = slotMean + sigma * slotStd;
+    var lo = Math.max(0, slotMean - sigma * slotStd);
+
+    var anom = getAnomMag(t);
+    var val = Math.max(0, Math.min(100, trueBase + noise() + anom));
+    var dev = (val - slotMean) / slotStd;
+    var isAnom = Math.abs(dev) > sigma;
+
+    real.push(+val.toFixed(1));
+    baseline.push(+slotMean.toFixed(1));
+    upper.push(+up.toFixed(1));
+    lower.push(+lo.toFixed(1));
+    anomalies.push(isAnom ? val : null);
+    deviations.push(+dev.toFixed(2));
   }
-  return {labels:labels,level:level,trendArr:trendArr,seasonArr:seasonArr};
+  return {labels: labels, real: real, baseline: baseline, upper: upper, lower: lower, anomalies: anomalies, deviations: deviations};
 }
 
-function ds(arr,f){ f=f||4; return arr.filter(function(_,i){return i%f===0;}); }
+// STL-like: decompose into trend + seasonal + residual, use MAD on residual
+function generateSTL(n, sigma) {
+  n = n || 1440; sigma = sigma || 2;
+  var real = [], baseline = [], residuals = [], anomalies = [], anomRate = [], labels = [];
+  var madMultiplier = sigma;
 
-var sigma=2;
-var period=1440;
-var mainChart=null,compChart=null;
+  for (var t = 0; t < n; t++) {
+    var h = Math.floor(t / 60), m = t % 60;
+    labels.push((h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m);
 
-var TT={
-  backgroundColor:'#0d1520',titleColor:'#475569',bodyColor:'#cbd5e1',
-  borderColor:'#1a2740',borderWidth:1,padding:10,
-  titleFont:{family:"'JetBrains Mono',monospace",size:10},bodyFont:{size:11}
+    var trend = 42 + 0.003 * t;
+    var seasonal = seasonalBase(t, 1440) - 42;
+    var fitted = trend + seasonal;
+    var anom = getAnomMag(t);
+    var val = Math.max(0, Math.min(100, fitted + noise() + anom));
+    var residual = val - fitted;
+
+    real.push(+val.toFixed(1));
+    baseline.push(+fitted.toFixed(1));
+    residuals.push(+residual.toFixed(2));
+    anomalies.push(null); // will fill after MAD calc
+  }
+
+  // Calculate MAD of residuals
+  var sortedRes = residuals.slice().sort(function(a, b) { return a - b; });
+  var median = sortedRes[Math.floor(sortedRes.length / 2)];
+  var absDevs = residuals.map(function(r) { return Math.abs(r - median); });
+  var sortedAbsDevs = absDevs.slice().sort(function(a, b) { return a - b; });
+  var mad = sortedAbsDevs[Math.floor(sortedAbsDevs.length / 2)];
+  var threshold = madMultiplier * mad * 1.4826; // consistency constant
+
+  var upper = [], lower = [];
+  for (var t = 0; t < n; t++) {
+    upper.push(+(baseline[t] + threshold).toFixed(1));
+    lower.push(+Math.max(0, baseline[t] - threshold).toFixed(1));
+    var isAnom = Math.abs(residuals[t] - median) > threshold;
+    anomalies[t] = isAnom ? real[t] : null;
+  }
+
+  return {labels: labels, real: real, baseline: baseline, upper: upper, lower: lower, anomalies: anomalies, residuals: residuals, mad: +mad.toFixed(2), threshold: +threshold.toFixed(2)};
+}
+
+// ── State ────────────────────────────────────────────────────────────
+var currentAlgo = 'wma';
+var sigma = 2;
+var period = 4; // seasons for WMA / histDays for baselinedev
+var mainChart = null, compChart = null;
+
+var TT = {
+  backgroundColor: '#0d1520', titleColor: '#475569', bodyColor: '#cbd5e1',
+  borderColor: '#1a2740', borderWidth: 1, padding: 10,
+  titleFont: {family: "'JetBrains Mono',monospace", size: 10}, bodyFont: {size: 11}
 };
 
-function buildCharts(){
-  var d=generateData(1440,sigma,period);
-  var f=4;
-  var labels=ds(d.labels,f),real=ds(d.real,f),baseline=ds(d.baseline,f);
-  var upper=ds(d.upper,f),lower=ds(d.lower,f),anomalies=ds(d.anomalies,f);
+function ds(arr, f) { f = f || 4; return arr.filter(function(_, i) { return i % f === 0; }); }
 
-  var anomCount=d.anomalies.filter(function(v){return v!==null;}).length;
-  var rate=(anomCount/d.real.length*100).toFixed(1);
-  var mean=(d.real.reduce(function(a,b){return a+b;},0)/d.real.length).toFixed(1);
-  var baseMean=(d.baseline.reduce(function(a,b){return a+b;},0)/d.baseline.length).toFixed(1);
-  document.getElementById('statAnom').textContent=anomCount;
-  document.getElementById('statRate').textContent=rate+'%';
-  document.getElementById('statMean').textContent=mean+'%';
-  document.getElementById('statBase').textContent=baseMean+'%';
+function updateStats(real, baseline, anomalies) {
+  var anomCount = anomalies.filter(function(v) { return v !== null; }).length;
+  var rate = (anomCount / real.length * 100).toFixed(1);
+  var mean = (real.reduce(function(a, b) { return a + b; }, 0) / real.length).toFixed(1);
+  var baseMean = (baseline.reduce(function(a, b) { return a + b; }, 0) / baseline.length).toFixed(1);
+  document.getElementById('statAnom').textContent = anomCount;
+  document.getElementById('statRate').textContent = rate + '%';
+  document.getElementById('statMean').textContent = mean + '%';
+  document.getElementById('statBase').textContent = baseMean + '%';
 
-  var logEl=document.getElementById('anomalyLog');
-  logEl.innerHTML='';
-  var zones2=[
-    {t:330,type:'spike',label:'05:30',val:72},
-    {t:628,type:'spike',label:'10:28',val:68},
-    {t:905,type:'drop', label:'15:05',val:18},
-    {t:1287,type:'spike',label:'21:27',val:79}
+  var logEl = document.getElementById('anomalyLog');
+  logEl.innerHTML = '';
+  var zones2 = [
+    {t:330, type:'spike', label:'05:30', val:72},
+    {t:628, type:'spike', label:'10:28', val:68},
+    {t:905, type:'drop',  label:'15:05', val:18},
+    {t:1287,type:'spike', label:'21:27', val:79}
   ];
-  var hasLog=false;
-  for(var i=0;i<zones2.length;i++){
-    var z=zones2[i];
-    var base=d.baseline[z.t]||42;
-    var isAnom=z.type==='spike'?z.val>base+sigma*5.5:z.val<base-sigma*5.5;
-    if(!isAnom) continue;
-    hasLog=true;
-    var icon=z.type==='spike'?'↑ SPIKE':'↓ DROP';
-    logEl.innerHTML+='<div class="anomaly-entry '+z.type+'">'+z.label+'  '+icon+'  CPU: '+z.val+'%</div>';
+  var hasLog = false;
+  for (var i = 0; i < zones2.length; i++) {
+    var z = zones2[i];
+    var base = baseline[z.t] || 42;
+    var isAnom = z.type === 'spike' ? z.val > base + sigma * 5 : z.val < base - sigma * 5;
+    if (!isAnom) continue;
+    hasLog = true;
+    var icon = z.type === 'spike' ? '↑ SPIKE' : '↓ DROP';
+    logEl.innerHTML += '<div class="anomaly-entry ' + z.type + '">' + z.label + '  ' + icon + '  CPU: ' + z.val + '%</div>';
   }
-  if(!hasLog) logEl.innerHTML='<div class="anomaly-entry ok">✓  Sin anomalías con σ = '+sigma+'</div>';
+  if (!hasLog) logEl.innerHTML = '<div class="anomaly-entry ok">✓  Sin anomalías con σ = ' + sigma + '</div>';
+}
 
-  var ctx1=document.getElementById('mainChart').getContext('2d');
-  if(mainChart) mainChart.destroy();
-  mainChart=new Chart(ctx1,{
-    type:'line',
-    data:{
-      labels:labels,
-      datasets:[
-        {label:'Banda superior',data:upper,borderWidth:0,pointRadius:0,fill:'+1',backgroundColor:'rgba(224,123,57,0.10)',tension:0.4},
-        {label:'Banda inferior',data:lower,borderWidth:0,pointRadius:0,fill:false,backgroundColor:'transparent',tension:0.4},
-        {label:'Baseline (Holt-Winters)',data:baseline,borderColor:'#e07b39',borderWidth:1.8,borderDash:[6,4],pointRadius:0,fill:false,tension:0.4},
-        {label:'CPU real (%)',data:real,borderColor:'#60a5fa',borderWidth:1.4,pointRadius:0,fill:false,tension:0.2},
-        {label:'Anomalía',data:anomalies,borderColor:'#ef4444',backgroundColor:'#ef4444',pointRadius:4,pointHoverRadius:7,showLine:false,fill:false}
+function buildMainChart(labels, real, baseline, upper, lower, anomalies) {
+  var f = 4;
+  var ctx = document.getElementById('mainChart').getContext('2d');
+  if (mainChart) mainChart.destroy();
+  mainChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ds(labels, f),
+      datasets: [
+        {label:'Banda superior', data:ds(upper,f), borderWidth:0, pointRadius:0, fill:'+1', backgroundColor:'rgba(224,123,57,0.10)', tension:0.4},
+        {label:'Banda inferior', data:ds(lower,f), borderWidth:0, pointRadius:0, fill:false, backgroundColor:'transparent', tension:0.4},
+        {label:'Baseline', data:ds(baseline,f), borderColor:'#e07b39', borderWidth:1.8, borderDash:[6,4], pointRadius:0, fill:false, tension:0.4},
+        {label:'CPU real (%)', data:ds(real,f), borderColor:'#60a5fa', borderWidth:1.4, pointRadius:0, fill:false, tension:0.2},
+        {label:'Anomalía', data:ds(anomalies,f), borderColor:'#ef4444', backgroundColor:'#ef4444', pointRadius:4, pointHoverRadius:7, showLine:false, fill:false}
       ]
     },
-    options:{
-      responsive:true,animation:{duration:250},
-      interaction:{mode:'index',intersect:false},
-      plugins:{
-        legend:{labels:{color:'#475569',font:{size:10},boxWidth:14,padding:10,
-          filter:function(item){return !item.text.includes('inferior')&&!item.text.includes('superior');}}},
-        tooltip:{backgroundColor:TT.backgroundColor,titleColor:TT.titleColor,bodyColor:TT.bodyColor,
-          borderColor:TT.borderColor,borderWidth:TT.borderWidth,padding:TT.padding,
-          callbacks:{afterBody:function(items){
-            var rv=items.find(function(i){return i.dataset.label==='CPU real (%)';}),
-                bv=items.find(function(i){return i.dataset.label==='Baseline (Holt-Winters)';});
-            if(rv&&bv){var d2=(rv.parsed.y-bv.parsed.y).toFixed(1);return['Δ baseline: '+(d2>0?'+':'')+d2+'%'];}
-            return[];
-          }}}
+    options: {
+      responsive: true, animation: {duration: 250},
+      interaction: {mode: 'index', intersect: false},
+      plugins: {
+        legend: {labels: {color:'#475569', font:{size:10}, boxWidth:14, padding:10,
+          filter: function(item) { return !item.text.includes('inferior') && !item.text.includes('superior'); }}},
+        tooltip: {
+          backgroundColor:TT.backgroundColor, titleColor:TT.titleColor, bodyColor:TT.bodyColor,
+          borderColor:TT.borderColor, borderWidth:TT.borderWidth, padding:TT.padding
+        }
       },
-      scales:{
-        x:{ticks:{color:'#334155',maxTicksLimit:12,font:{size:10}},grid:{color:'#0d1825'}},
-        y:{min:0,max:100,ticks:{color:'#334155',font:{size:10},callback:function(v){return v+'%';}},
-          grid:{color:'#0d1825'},title:{display:true,text:'CPU Utilization (%)',color:'#2d3f55',font:{size:10}}}
-      }
-    }
-  });
-
-  var comp=generateComponents(1440,period);
-  var ctx2=document.getElementById('compChart').getContext('2d');
-  if(compChart) compChart.destroy();
-  compChart=new Chart(ctx2,{
-    type:'line',
-    data:{
-      labels:ds(comp.labels,f),
-      datasets:[
-        {label:'① Nivel (α)',data:ds(comp.level,f),borderColor:'#e07b39',borderWidth:2,pointRadius:0,fill:false},
-        {label:'② Tendencia (β)',data:ds(comp.trendArr,f),borderColor:'#4ade80',borderWidth:2,pointRadius:0,fill:false,yAxisID:'y2'},
-        {label:'③ Estacionalidad (γ)',data:ds(comp.seasonArr,f),borderColor:'#a78bfa',borderWidth:2,pointRadius:0,fill:'origin',backgroundColor:'rgba(167,139,250,0.07)'}
-      ]
-    },
-    options:{
-      responsive:true,animation:{duration:250},
-      plugins:{
-        legend:{labels:{color:'#475569',font:{size:10},boxWidth:14,padding:10}},
-        tooltip:{backgroundColor:TT.backgroundColor,titleColor:TT.titleColor,bodyColor:TT.bodyColor,borderColor:TT.borderColor,borderWidth:TT.borderWidth,padding:TT.padding}
-      },
-      scales:{
-        x:{ticks:{color:'#334155',maxTicksLimit:12,font:{size:10}},grid:{color:'#0d1825'}},
-        y:{ticks:{color:'#334155',font:{size:10}},grid:{color:'#0d1825'},title:{display:true,text:'Valor',color:'#2d3f55',font:{size:10}}},
-        y2:{position:'right',ticks:{color:'#4ade80',font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:'Tendencia',color:'#4ade80',font:{size:10}}}
+      scales: {
+        x: {ticks:{color:'#334155', maxTicksLimit:12, font:{size:10}}, grid:{color:'#0d1825'}},
+        y: {min:0, max:100,
+          ticks: {color:'#334155', font:{size:10}, callback:function(v){return v+'%';}},
+          grid: {color:'#0d1825'},
+          title: {display:true, text:'CPU Utilization (%)', color:'#2d3f55', font:{size:10}}}
       }
     }
   });
 }
 
-document.getElementById('sigma').addEventListener('input',function(){
-  sigma=parseFloat(this.value);
-  document.getElementById('sigmaVal').textContent=sigma.toFixed(1);
+function buildCompChartWMA(data, seasons) {
+  // Show baseline comparison: current vs N season averages
+  var f = 4;
+  var ctx = document.getElementById('compChart').getContext('2d');
+  if (compChart) compChart.destroy();
+  document.getElementById('compChartTitle').innerHTML = '<span>▸</span>BASELINE WMA — Peso por estación: más reciente = mayor peso (estaciones: ' + seasons + ')';
+
+  // Generate pseudo-season lines
+  var datasets = [
+    {label:'Baseline WMA', data:ds(data.baseline,f), borderColor:'#e07b39', borderWidth:2, pointRadius:0, fill:false, tension:0.4, borderDash:[6,4]}
+  ];
+  var colors = ['#1e3a5f','#1e4a3f','#3a1e4a','#4a3a1e'];
+  for (var s = 0; s < seasons; s++) {
+    var seasonData = data.baseline.map(function(b, i) {
+      return +(b + (s * 1.8 - seasons * 0.9) * 0.6 + Math.sin(i / 60 + s) * 1.2).toFixed(1);
+    });
+    datasets.push({
+      label: 'Semana -' + (s + 1),
+      data: ds(seasonData, f),
+      borderColor: colors[s] || '#334155',
+      borderWidth: 1,
+      pointRadius: 0,
+      fill: false,
+      tension: 0.4,
+      opacity: 0.5
+    });
+  }
+
+  compChart = new Chart(ctx, {
+    type: 'line',
+    data: {labels: ds(data.labels, f), datasets: datasets},
+    options: {
+      responsive: true, animation:{duration:250},
+      plugins: {
+        legend: {labels:{color:'#475569', font:{size:10}, boxWidth:14, padding:10}},
+        tooltip: {backgroundColor:TT.backgroundColor, titleColor:TT.titleColor, bodyColor:TT.bodyColor, borderColor:TT.borderColor, borderWidth:TT.borderWidth, padding:TT.padding}
+      },
+      scales: {
+        x: {ticks:{color:'#334155', maxTicksLimit:12, font:{size:10}}, grid:{color:'#0d1825'}},
+        y: {ticks:{color:'#334155', font:{size:10}, callback:function(v){return v+'%';}}, grid:{color:'#0d1825'},
+          title:{display:true, text:'CPU (%)', color:'#2d3f55', font:{size:10}}}
+      }
+    }
+  });
+}
+
+function buildCompChartDev(data) {
+  var f = 4;
+  var ctx = document.getElementById('compChart').getContext('2d');
+  if (compChart) compChart.destroy();
+  document.getElementById('compChartTitle').innerHTML = '<span>▸</span>BASELINEDEV — Número de desviaciones estándar (stddevpop) respecto al historial';
+
+  compChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ds(data.labels, f),
+      datasets: [
+        {label:'Desviaciones (σ)', data:ds(data.deviations,f), borderColor:'#60a5fa', borderWidth:1.5, pointRadius:0, fill:'origin', backgroundColor:'rgba(96,165,250,0.07)', tension:0.3},
+        {label:'Umbral +σ', data:ds(data.deviations.map(function(){return sigma;}),f), borderColor:'#ef4444', borderWidth:1, borderDash:[4,4], pointRadius:0, fill:false},
+        {label:'Umbral -σ', data:ds(data.deviations.map(function(){return -sigma;}),f), borderColor:'#ef4444', borderWidth:1, borderDash:[4,4], pointRadius:0, fill:false}
+      ]
+    },
+    options: {
+      responsive:true, animation:{duration:250},
+      plugins:{
+        legend:{labels:{color:'#475569', font:{size:10}, boxWidth:14, padding:10}},
+        tooltip:{backgroundColor:TT.backgroundColor, titleColor:TT.titleColor, bodyColor:TT.bodyColor, borderColor:TT.borderColor, borderWidth:TT.borderWidth, padding:TT.padding}
+      },
+      scales:{
+        x:{ticks:{color:'#334155', maxTicksLimit:12, font:{size:10}}, grid:{color:'#0d1825'}},
+        y:{ticks:{color:'#334155', font:{size:10}}, grid:{color:'#0d1825'},
+          title:{display:true, text:'Desviaciones estándar', color:'#2d3f55', font:{size:10}}}
+      }
+    }
+  });
+}
+
+function buildCompChartSTL(data) {
+  var f = 4;
+  var ctx = document.getElementById('compChart').getContext('2d');
+  if (compChart) compChart.destroy();
+  document.getElementById('compChartTitle').innerHTML = '<span>▸</span>TRENDSTL — Residuo (STL decomposition) y umbral MAD · threshold=' + data.threshold.toFixed(1);
+
+  compChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: ds(data.labels, f),
+      datasets: [
+        {label:'Residuo (anomalías potenciales)', data:ds(data.residuals,f), borderColor:'#a78bfa', borderWidth:1.5, pointRadius:0, fill:'origin', backgroundColor:'rgba(167,139,250,0.07)', tension:0.3},
+        {label:'Umbral MAD +', data:ds(data.residuals.map(function(){return data.threshold;}),f), borderColor:'#ef4444', borderWidth:1, borderDash:[4,4], pointRadius:0, fill:false},
+        {label:'Umbral MAD -', data:ds(data.residuals.map(function(){return -data.threshold;}),f), borderColor:'#ef4444', borderWidth:1, borderDash:[4,4], pointRadius:0, fill:false}
+      ]
+    },
+    options: {
+      responsive:true, animation:{duration:250},
+      plugins:{
+        legend:{labels:{color:'#475569', font:{size:10}, boxWidth:14, padding:10}},
+        tooltip:{backgroundColor:TT.backgroundColor, titleColor:TT.titleColor, bodyColor:TT.bodyColor, borderColor:TT.borderColor, borderWidth:TT.borderWidth, padding:TT.padding}
+      },
+      scales:{
+        x:{ticks:{color:'#334155', maxTicksLimit:12, font:{size:10}}, grid:{color:'#0d1825'}},
+        y:{ticks:{color:'#334155', font:{size:10}}, grid:{color:'#0d1825'},
+          title:{display:true, text:'Residuo', color:'#2d3f55', font:{size:10}}}
+      }
+    }
+  });
+}
+
+function buildCharts() {
+  if (currentAlgo === 'wma') {
+    var d = generateWMA(1440, period, sigma);
+    buildMainChart(d.labels, d.real, d.baseline, d.upper, d.lower, d.anomalies);
+    buildCompChartWMA(d, period);
+    updateStats(d.real, d.baseline, d.anomalies);
+  } else if (currentAlgo === 'baselinedev') {
+    var d = generateBaselineDev(1440, period, sigma);
+    buildMainChart(d.labels, d.real, d.baseline, d.upper, d.lower, d.anomalies);
+    buildCompChartDev(d);
+    updateStats(d.real, d.baseline, d.anomalies);
+  } else {
+    var d = generateSTL(1440, sigma);
+    buildMainChart(d.labels, d.real, d.baseline, d.upper, d.lower, d.anomalies);
+    buildCompChartSTL(d);
+    updateStats(d.real, d.baseline, d.anomalies);
+  }
+}
+
+function switchAlgo(algo, tabEl) {
+  currentAlgo = algo;
+  document.querySelectorAll('.algo-tab').forEach(function(t) { t.classList.remove('active'); });
+  tabEl.classList.add('active');
+
+  if (algo === 'wma') {
+    document.getElementById('periodLabel').textContent = 'Estaciones (semanas)';
+    document.getElementById('sliderHint').innerHTML = 'Más estaciones = baseline más robusto, requiere más historial.<br>σ alto = banda ancha = menos alertas.';
+    document.getElementById('baselineLegendTitle').textContent = 'Baseline WMA';
+    document.getElementById('baselineLegendText').textContent = 'Promedio ponderado del mismo período en semanas anteriores.';
+    document.getElementById('sigma').max = 4;
+    document.getElementById('period').max = 8;
+    document.getElementById('period').min = 1;
+    document.getElementById('period').value = 4;
+    period = 4;
+    document.getElementById('periodVal').textContent = '4';
+  } else if (algo === 'baselinedev') {
+    document.getElementById('periodLabel').textContent = 'Días de historial';
+    document.getElementById('sliderHint').innerHTML = 'Más días = stddevpop más preciso y estable.<br>Umbral típico en producción: 3σ.';
+    document.getElementById('baselineLegendTitle').textContent = 'Media histórica (stddevpop)';
+    document.getElementById('baselineLegendText').textContent = 'Promedio del mismo horario en los últimos N días.';
+    document.getElementById('period').max = 30;
+    document.getElementById('period').min = 5;
+    document.getElementById('period').value = 10;
+    period = 10;
+    document.getElementById('periodVal').textContent = '10';
+  } else {
+    document.getElementById('periodLabel').textContent = 'Umbral MAD (σ equiv.)';
+    document.getElementById('sliderHint').innerHTML = 'STL descompone: Tendencia + Estacionalidad + Residuo.<br>MAD mide anomalías en el residuo. Robusto a outliers.';
+    document.getElementById('baselineLegendTitle').textContent = 'Baseline STL (fitted)';
+    document.getElementById('baselineLegendText').textContent = 'Tendencia + Estacionalidad ajustada por LOESS.';
+    document.getElementById('period').max = 5;
+    document.getElementById('period').min = 1;
+    document.getElementById('period').value = 2;
+    period = 2;
+    document.getElementById('periodVal').textContent = '2';
+  }
+  buildCharts();
+}
+
+document.getElementById('sigma').addEventListener('input', function() {
+  sigma = parseFloat(this.value);
+  document.getElementById('sigmaVal').textContent = sigma.toFixed(1);
   buildCharts();
 });
-document.getElementById('period').addEventListener('input',function(){
-  period=parseInt(this.value);
-  document.getElementById('periodVal').textContent=period+' min';
+document.getElementById('period').addEventListener('input', function() {
+  period = parseInt(this.value);
+  document.getElementById('periodVal').textContent = period;
   buildCharts();
 });
 
