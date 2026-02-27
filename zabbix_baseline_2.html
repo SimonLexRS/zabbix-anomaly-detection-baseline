@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Zabbix Baseline — Holt-Winters</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Inter', 'Segoe UI', sans-serif;
+    background: #080c14;
+    color: #cbd5e1;
+    min-height: 100vh;
+    padding: 28px 24px;
+  }
+
+  .page-header {
+    max-width: 1200px;
+    margin: 0 auto 24px;
+    padding-bottom: 18px;
+    border-bottom: 1px solid #1e2d42;
+  }
+  .page-header h1 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    color: #f1f5f9;
+    letter-spacing: 0.3px;
+    margin-bottom: 4px;
+  }
+  .page-header h1 span { color: #e07b39; }
+  .page-header p { font-size: 0.78rem; color: #475569; }
+  .badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0.8px;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 4px;
+    background: #1a2740;
+    color: #64748b;
+    border: 1px solid #1e3050;
+    margin-right: 8px;
+    vertical-align: middle;
+  }
+
+  .card {
+    background: #0d1520;
+    border: 1px solid #1a2740;
+    border-radius: 8px;
+    padding: 18px 20px;
+  }
+  .card-title {
+    font-size: 0.7rem;
+    font-weight: 600;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+    color: #334155;
+    margin-bottom: 14px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #1a2740;
+  }
+  .card-title span { color: #e07b39; margin-right: 6px; }
+
+  .top-section { display: grid; grid-template-columns: 1fr 300px; gap: 16px; max-width: 1200px; margin: 0 auto; }
+  .charts-col { display: flex; flex-direction: column; gap: 16px; }
+  canvas { max-height: 250px; }
+
+  .panel { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+
+  .legend { display: flex; flex-direction: column; gap: 9px; }
+  .legend-item { display: flex; align-items: flex-start; gap: 10px; }
+  .l-icon { flex-shrink: 0; }
+  .l-line  { width: 20px; height: 2px; border-radius: 1px; margin-top: 9px; }
+  .l-dash  { width: 20px; height: 0; border-top: 2px dashed; margin-top: 9px; }
+  .l-band  { width: 20px; height: 10px; border-radius: 3px; opacity: 0.4; margin-top: 4px; }
+  .l-dot   { width: 10px; height: 10px; border-radius: 50%; margin-top: 5px; }
+  .legend-text strong { font-size: 0.78rem; font-weight: 600; color: #e2e8f0; display: block; }
+  .legend-text p { font-size: 0.71rem; color: #475569; margin-top: 2px; line-height: 1.5; }
+
+  /* FIXED sliders */
+  .slider-group { display: flex; flex-direction: column; gap: 14px; }
+  .slider-row { display: flex; flex-direction: column; gap: 6px; }
+  .slider-header { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+  .slider-header label { font-size: 0.72rem; color: #64748b; font-weight: 500; }
+  .slider-val {
+    font-size: 0.72rem; font-weight: 700;
+    color: #e07b39;
+    font-family: 'JetBrains Mono', monospace;
+    white-space: nowrap;
+  }
+  input[type=range] { width: 100%; accent-color: #e07b39; cursor: pointer; }
+  .slider-hint { font-size: 0.68rem; color: #334155; line-height: 1.6; margin-top: 6px; }
+
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .stat { background: #080c14; border: 1px solid #1a2740; border-radius: 6px; padding: 10px 12px; }
+  .stat-label { font-size: 0.65rem; color: #334155; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px; }
+  .stat-value { font-size: 1rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; }
+
+  .anomaly-log { display: flex; flex-direction: column; gap: 5px; max-height: 110px; overflow-y: auto; }
+  .anomaly-log::-webkit-scrollbar { width: 3px; }
+  .anomaly-log::-webkit-scrollbar-thumb { background: #1e2d42; border-radius: 2px; }
+  .anomaly-entry { font-size: 0.7rem; font-family: 'JetBrains Mono', monospace; padding: 5px 9px; border-radius: 4px; border-left: 2px solid; line-height: 1.4; }
+  .anomaly-entry.spike { background: #7f1d1d18; border-color: #dc2626; color: #fca5a5; }
+  .anomaly-entry.drop  { background: #1e3a5f18; border-color: #3b82f6; color: #93c5fd; }
+  .anomaly-entry.ok    { background: #14532d18; border-color: #16a34a; color: #6ee7b7; font-style: italic; }
+
+  /* Concepts */
+  .concepts-section { max-width: 1200px; margin: 16px auto 0; display: flex; flex-direction: column; gap: 12px; }
+  .concepts-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 12px; }
+
+  .concept-card { background: #0d1520; border: 1px solid #1a2740; border-radius: 8px; padding: 16px; }
+  .concept-card-header { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px solid #1a2740; }
+  .concept-index { font-size: 0.75rem; font-weight: 700; font-family: 'JetBrains Mono', monospace; width: 24px; height: 24px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .concept-index.orange { background: #c2601e; color: #fff; }
+  .concept-index.green  { background: #15803d; color: #fff; }
+  .concept-index.purple { background: #6d28d9; color: #fff; }
+  .concept-title { font-size: 0.78rem; font-weight: 600; color: #e2e8f0; }
+  .concept-subtitle { font-size: 0.65rem; color: #475569; margin-top: 1px; font-family: 'JetBrains Mono', monospace; }
+  .concept-body { font-size: 0.73rem; color: #64748b; line-height: 1.75; }
+  .concept-body strong { color: #94a3b8; font-weight: 500; }
+  .concept-body code { font-family: 'JetBrains Mono', monospace; font-size: 0.69rem; padding: 1px 5px; border-radius: 3px; background: #080c14; border: 1px solid #1a2740; }
+  .concept-body code.orange { color: #e07b39; }
+  .concept-body code.green  { color: #4ade80; }
+  .concept-body code.purple { color: #a78bfa; }
+
+  .formula-card { background: #0d1520; border: 1px solid #1a2740; border-radius: 8px; padding: 18px 20px; }
+  .formula-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  .formula-col-title { font-size: 0.65rem; font-weight: 600; letter-spacing: 1px; text-transform: uppercase; color: #334155; margin-bottom: 12px; }
+  .formula-line { font-size: 0.73rem; color: #64748b; margin-bottom: 8px; line-height: 1.65; }
+  .formula-line strong { color: #94a3b8; font-weight: 500; }
+  .formula-line code { font-family: 'JetBrains Mono', monospace; font-size: 0.69rem; padding: 2px 6px; border-radius: 3px; background: #080c14; border: 1px solid #1a2740; display: inline-block; margin-top: 3px; }
+  .formula-line code.orange { color: #e07b39; }
+  .formula-line code.blue   { color: #60a5fa; }
+  .formula-line code.red    { color: #f87171; }
+  .formula-line code.green  { color: #4ade80; }
+  .formula-divider { border: none; border-top: 1px solid #1a2740; margin: 10px 0; }
+  .limitation-pill { display: inline-flex; align-items: flex-start; gap: 6px; font-size: 0.68rem; color: #f87171; background: #7f1d1d18; border: 1px solid #7f1d1d44; border-radius: 4px; padding: 6px 10px; margin-top: 6px; line-height: 1.5; }
+
+  @media(max-width:900px){
+    .top-section{grid-template-columns:1fr;}
+    .concepts-grid{grid-template-columns:1fr;}
+    .formula-grid{grid-template-columns:1fr;}
+  }
+</style>
+</head>
+<body>
+
+<div class="page-header">
+  <h1>
+    <span class="badge">ZABBIX ML</span>
+    Baseline Nativo — <span>Holt-Winters Triple Exponential Smoothing</span>
+  </h1>
+  <p>Cómo Zabbix predice el comportamiento normal de una métrica de red y detecta desviaciones automáticamente</p>
+</div>
+
+<div class="top-section">
+
+  <div class="charts-col">
+    <div class="card">
+      <div class="card-title"><span>▸</span>CPU UTILIZATION — BTS LA PAZ NORTE &nbsp;·&nbsp; Últimas 24 h &nbsp;·&nbsp; resolución 1 min</div>
+      <canvas id="mainChart"></canvas>
+    </div>
+    <div class="card">
+      <div class="card-title"><span>▸</span>DESCOMPOSICIÓN DEL BASELINE — Nivel · Tendencia · Estacionalidad</div>
+      <canvas id="compChart"></canvas>
+    </div>
+  </div>
+
+  <div class="panel">
+
+    <div class="card">
+      <div class="card-title"><span>▸</span>Elementos del gráfico</div>
+      <div class="legend">
+        <div class="legend-item">
+          <div class="l-icon l-line" style="background:#60a5fa;"></div>
+          <div class="legend-text"><strong>Valor real (métrica)</strong><p>Lo que Zabbix mide cada minuto: CPU %, ancho de banda, latencia…</p></div>
+        </div>
+        <div class="legend-item">
+          <div class="l-icon l-dash" style="border-color:#e07b39;"></div>
+          <div class="legend-text"><strong>Baseline (predicción H-W)</strong><p>Lo que Zabbix espera ver, calculado a partir de los 3 componentes.</p></div>
+        </div>
+        <div class="legend-item">
+          <div class="l-icon l-band" style="background:#e07b39;"></div>
+          <div class="legend-text"><strong>Banda de confianza (σ)</strong><p>Rango "normal". Valores fuera = anomalía. Ancho controlado por σ.</p></div>
+        </div>
+        <div class="legend-item">
+          <div class="l-icon l-dot" style="background:#ef4444;"></div>
+          <div class="legend-text"><strong>Anomalía detectada</strong><p>Punto que salió de la banda. Zabbix puede disparar un trigger aquí.</p></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>▸</span>Ajustar sensibilidad</div>
+      <div class="slider-group">
+        <div class="slider-row">
+          <div class="slider-header">
+            <label>Ancho de banda (σ)</label>
+            <span class="slider-val" id="sigmaVal">2.0</span>
+          </div>
+          <input type="range" id="sigma" min="0.5" max="4" step="0.1" value="2">
+        </div>
+        <div class="slider-row">
+          <div class="slider-header">
+            <label>Estacionalidad (período)</label>
+            <span class="slider-val" id="periodVal">1440 min</span>
+          </div>
+          <input type="range" id="period" min="60" max="1440" step="60" value="1440">
+        </div>
+      </div>
+      <p class="slider-hint">
+        σ bajo → más sensible, mayor tasa de falsos positivos.<br>
+        σ alto → menos alertas, riesgo de omitir anomalías reales.
+      </p>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>▸</span>Estadísticas</div>
+      <div class="stats">
+        <div class="stat">
+          <div class="stat-label">Anomalías</div>
+          <div class="stat-value" id="statAnom" style="color:#ef4444;">0</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Tasa</div>
+          <div class="stat-value" id="statRate" style="color:#e07b39;">0%</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Promedio real</div>
+          <div class="stat-value" id="statMean" style="color:#60a5fa;">—</div>
+        </div>
+        <div class="stat">
+          <div class="stat-label">Baseline prom.</div>
+          <div class="stat-value" id="statBase" style="color:#e07b39;">—</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span>▸</span>Registro de eventos</div>
+      <div class="anomaly-log" id="anomalyLog">
+        <div class="anomaly-entry ok">✓  Sin anomalías detectadas</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Concepts -->
+<div class="concepts-section">
+
+  <div class="concepts-grid">
+
+    <div class="concept-card">
+      <div class="concept-card-header">
+        <div class="concept-index orange">α</div>
+        <div>
+          <div class="concept-title">Nivel (Level)</div>
+          <div class="concept-subtitle">Parámetro α — level smoothing</div>
+        </div>
+      </div>
+      <div class="concept-body">
+        El valor <strong>promedio actual</strong> de la métrica, actualizado en cada nueva observación.<br><br>
+        Si el CPU de un BTS normalmente opera al 45 %, ese es el nivel base del baseline.<br><br>
+        <code class="orange">α alto</code> → el baseline sigue los cambios rápidamente (memoria corta).<br>
+        <code class="orange">α bajo</code> → el baseline es estable, prioriza el historial largo.
+      </div>
+    </div>
+
+    <div class="concept-card">
+      <div class="concept-card-header">
+        <div class="concept-index green">β</div>
+        <div>
+          <div class="concept-title">Tendencia (Trend)</div>
+          <div class="concept-subtitle">Parámetro β — trend smoothing</div>
+        </div>
+      </div>
+      <div class="concept-body">
+        Captura si la métrica tiene una <strong>dirección sostenida</strong> en el tiempo: crecimiento o decremento gradual.<br><br>
+        Ejemplo: el tráfico crece 2 % mensual por aumento de usuarios activos.<br><br>
+        <code class="green">β alto</code> → detecta nuevas tendencias con rapidez.<br>
+        <code class="green">β bajo</code> → tendencia suave, menos reactividad al ruido.
+      </div>
+    </div>
+
+    <div class="concept-card">
+      <div class="concept-card-header">
+        <div class="concept-index purple">γ</div>
+        <div>
+          <div class="concept-title">Estacionalidad (Seasonality)</div>
+          <div class="concept-subtitle">Parámetro γ — seasonal smoothing</div>
+        </div>
+      </div>
+      <div class="concept-body">
+        Patrones que se <strong>repiten periódicamente</strong>: el tráfico sube a las 9 AM y baja de madrugada, cada día.<br><br>
+        El período define el ciclo: <code class="purple">1440</code> = diario, <code class="purple">10080</code> = semanal.<br><br>
+        <code class="purple">γ alto</code> → factores estacionales se actualizan rápido.<br>
+        <code class="purple">γ bajo</code> → patrón estacional más conservador y estable.
+      </div>
+    </div>
+
+  </div>
+
+  <div class="formula-card">
+    <div class="card-title" style="margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid #1a2740;">
+      <span style="color:#e07b39;">▸</span> CÁLCULO DEL BASELINE — Fórmula y configuración en Zabbix
+    </div>
+    <div class="formula-grid">
+      <div>
+        <div class="formula-col-title">Predicción Holt-Winters</div>
+        <div class="formula-line">
+          <strong>Predicción en t+1:</strong><br>
+          <code class="orange">Ŷ(t+1) = (Nivel_t + Tendencia_t) × Factor_Estacional_t</code>
+        </div>
+        <hr class="formula-divider">
+        <div class="formula-line">
+          <strong>Banda de confianza:</strong><br>
+          <code class="blue">Límite Superior = Ŷ(t+1) + σ × Desviación_histórica</code>
+        </div>
+        <div class="formula-line">
+          <code class="blue">Límite Inferior  = Ŷ(t+1) − σ × Desviación_histórica</code>
+        </div>
+        <hr class="formula-divider">
+        <div class="formula-line">
+          <strong>Criterio de anomalía:</strong><br>
+          <code class="red">Valor_real &gt; Límite Superior  →  SPIKE ↑</code>
+        </div>
+        <div class="formula-line">
+          <code class="red">Valor_real &lt; Límite Inferior   →  DROP ↓</code>
+        </div>
+      </div>
+      <div>
+        <div class="formula-col-title">Configuración en Zabbix 6.x</div>
+        <div class="formula-line">
+          <strong>Función de detección (trigger expression):</strong><br>
+          <code class="green">anomalydetection(/host/key, 1h:now/h)</code>
+        </div>
+        <div class="formula-line">Devuelve <code>1</code> si el valor actual está fuera del rango predicho por el baseline.</div>
+        <hr class="formula-divider">
+        <div class="formula-line">
+          <strong>Función de desviación (para dashboards):</strong><br>
+          <code class="green">baselinedev(/host/key, 1w:now/w, 2)</code>
+        </div>
+        <div class="formula-line">Devuelve cuántas desviaciones estándar se aleja el valor del baseline semanal.</div>
+        <hr class="formula-divider">
+        <div class="formula-line"><strong>Limitación crítica del método nativo:</strong></div>
+        <div class="limitation-pill">
+          ⚠&nbsp; Univariado — analiza cada métrica en aislamiento. No puede correlacionar CPU + RAM + BW simultáneamente.
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+function generateData(n,sigma,per){
+  n=n||1440; sigma=sigma||2; per=per||1440;
+  var labels=[],real=[],baseline=[],upper=[],lower=[],anomalies=[];
+  // per = período estacional en minutos
+  // Cuando per es corto (ej. 60min) los picos se repiten cada hora
+  // Cuando per es largo (1440min = 1 día) el patrón es diario
+  function seasonal(t){
+    var h=(t%per)/per;  // posición normalizada dentro del período
+    // Pico de mañana y tarde (relativos al período)
+    var m1=22*Math.exp(-0.5*Math.pow((h-0.38)/0.06,2));
+    var m2=18*Math.exp(-0.5*Math.pow((h-0.62)/0.07,2));
+    var m3=-5*Math.exp(-0.5*Math.pow((h-0.90)/0.08,2));
+    // A períodos cortos la amplitud se reduce para que tenga sentido visual
+    var scale=Math.min(1, per/480);
+    return 42+(m1+m2+m3)*scale;
+  }
+  function noise(){ return (Math.random()-0.5)*6; }
+  var zones=[
+    {start:320,end:340,mag:28},{start:620,end:635,mag:25},
+    {start:900,end:910,mag:-22},{start:1280,end:1295,mag:30}
+  ];
+  function getAnomMag(t){
+    for(var i=0;i<zones.length;i++){
+      var z=zones[i];
+      if(t>=z.start&&t<=z.end){
+        var c=(z.start+z.end)/2,hw=(z.end-z.start)/2;
+        return z.mag*Math.exp(-0.5*Math.pow((t-c)/hw,2));
+      }
+    }
+    return 0;
+  }
+  var std=5.5;
+  for(var t=0;t<n;t++){
+    var h=Math.floor(t/60),m=t%60;
+    labels.push((h<10?'0':'')+h+':'+(m<10?'0':'')+m);
+    var base=seasonal(t)+0.003*t;
+    var anom=getAnomMag(t);
+    var val=Math.max(0,Math.min(100,base+noise()+anom));
+    var up=base+sigma*std;
+    var lo=Math.max(0,base-sigma*std);
+    var isAnom=(val>up||val<lo)&&Math.abs(val-base)>3;
+    real.push(+val.toFixed(1));
+    baseline.push(+base.toFixed(1));
+    upper.push(+up.toFixed(1));
+    lower.push(+lo.toFixed(1));
+    anomalies.push(isAnom?val:null);
+  }
+  return {labels:labels,real:real,baseline:baseline,upper:upper,lower:lower,anomalies:anomalies};
+}
+
+function generateComponents(n,per){
+  n=n||1440; per=per||1440;
+  var labels=[],level=[],trendArr=[],seasonArr=[];
+  for(var t=0;t<n;t++){
+    var h=Math.floor(t/60),m=t%60;
+    labels.push((h<10?'0':'')+h+':'+(m<10?'0':'')+m);
+    var s=(t%per)/per;
+    var scale=Math.min(1, per/480);
+    var m1=22*Math.exp(-0.5*Math.pow((s-0.38)/0.06,2));
+    var m2=18*Math.exp(-0.5*Math.pow((s-0.62)/0.07,2));
+    var m3=-5*Math.exp(-0.5*Math.pow((s-0.9)/0.08,2));
+    level.push(42);
+    trendArr.push(+(0.003*t).toFixed(2));
+    seasonArr.push(+((m1+m2+m3)*scale).toFixed(2));
+  }
+  return {labels:labels,level:level,trendArr:trendArr,seasonArr:seasonArr};
+}
+
+function ds(arr,f){ f=f||4; return arr.filter(function(_,i){return i%f===0;}); }
+
+var sigma=2;
+var period=1440;
+var mainChart=null,compChart=null;
+
+var TT={
+  backgroundColor:'#0d1520',titleColor:'#475569',bodyColor:'#cbd5e1',
+  borderColor:'#1a2740',borderWidth:1,padding:10,
+  titleFont:{family:"'JetBrains Mono',monospace",size:10},bodyFont:{size:11}
+};
+
+function buildCharts(){
+  var d=generateData(1440,sigma,period);
+  var f=4;
+  var labels=ds(d.labels,f),real=ds(d.real,f),baseline=ds(d.baseline,f);
+  var upper=ds(d.upper,f),lower=ds(d.lower,f),anomalies=ds(d.anomalies,f);
+
+  var anomCount=d.anomalies.filter(function(v){return v!==null;}).length;
+  var rate=(anomCount/d.real.length*100).toFixed(1);
+  var mean=(d.real.reduce(function(a,b){return a+b;},0)/d.real.length).toFixed(1);
+  var baseMean=(d.baseline.reduce(function(a,b){return a+b;},0)/d.baseline.length).toFixed(1);
+  document.getElementById('statAnom').textContent=anomCount;
+  document.getElementById('statRate').textContent=rate+'%';
+  document.getElementById('statMean').textContent=mean+'%';
+  document.getElementById('statBase').textContent=baseMean+'%';
+
+  var logEl=document.getElementById('anomalyLog');
+  logEl.innerHTML='';
+  var zones2=[
+    {t:330,type:'spike',label:'05:30',val:72},
+    {t:628,type:'spike',label:'10:28',val:68},
+    {t:905,type:'drop', label:'15:05',val:18},
+    {t:1287,type:'spike',label:'21:27',val:79}
+  ];
+  var hasLog=false;
+  for(var i=0;i<zones2.length;i++){
+    var z=zones2[i];
+    var base=d.baseline[z.t]||42;
+    var isAnom=z.type==='spike'?z.val>base+sigma*5.5:z.val<base-sigma*5.5;
+    if(!isAnom) continue;
+    hasLog=true;
+    var icon=z.type==='spike'?'↑ SPIKE':'↓ DROP';
+    logEl.innerHTML+='<div class="anomaly-entry '+z.type+'">'+z.label+'  '+icon+'  CPU: '+z.val+'%</div>';
+  }
+  if(!hasLog) logEl.innerHTML='<div class="anomaly-entry ok">✓  Sin anomalías con σ = '+sigma+'</div>';
+
+  var ctx1=document.getElementById('mainChart').getContext('2d');
+  if(mainChart) mainChart.destroy();
+  mainChart=new Chart(ctx1,{
+    type:'line',
+    data:{
+      labels:labels,
+      datasets:[
+        {label:'Banda superior',data:upper,borderWidth:0,pointRadius:0,fill:'+1',backgroundColor:'rgba(224,123,57,0.10)',tension:0.4},
+        {label:'Banda inferior',data:lower,borderWidth:0,pointRadius:0,fill:false,backgroundColor:'transparent',tension:0.4},
+        {label:'Baseline (Holt-Winters)',data:baseline,borderColor:'#e07b39',borderWidth:1.8,borderDash:[6,4],pointRadius:0,fill:false,tension:0.4},
+        {label:'CPU real (%)',data:real,borderColor:'#60a5fa',borderWidth:1.4,pointRadius:0,fill:false,tension:0.2},
+        {label:'Anomalía',data:anomalies,borderColor:'#ef4444',backgroundColor:'#ef4444',pointRadius:4,pointHoverRadius:7,showLine:false,fill:false}
+      ]
+    },
+    options:{
+      responsive:true,animation:{duration:250},
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{labels:{color:'#475569',font:{size:10},boxWidth:14,padding:10,
+          filter:function(item){return !item.text.includes('inferior')&&!item.text.includes('superior');}}},
+        tooltip:{backgroundColor:TT.backgroundColor,titleColor:TT.titleColor,bodyColor:TT.bodyColor,
+          borderColor:TT.borderColor,borderWidth:TT.borderWidth,padding:TT.padding,
+          callbacks:{afterBody:function(items){
+            var rv=items.find(function(i){return i.dataset.label==='CPU real (%)';}),
+                bv=items.find(function(i){return i.dataset.label==='Baseline (Holt-Winters)';});
+            if(rv&&bv){var d2=(rv.parsed.y-bv.parsed.y).toFixed(1);return['Δ baseline: '+(d2>0?'+':'')+d2+'%'];}
+            return[];
+          }}}
+      },
+      scales:{
+        x:{ticks:{color:'#334155',maxTicksLimit:12,font:{size:10}},grid:{color:'#0d1825'}},
+        y:{min:0,max:100,ticks:{color:'#334155',font:{size:10},callback:function(v){return v+'%';}},
+          grid:{color:'#0d1825'},title:{display:true,text:'CPU Utilization (%)',color:'#2d3f55',font:{size:10}}}
+      }
+    }
+  });
+
+  var comp=generateComponents(1440,period);
+  var ctx2=document.getElementById('compChart').getContext('2d');
+  if(compChart) compChart.destroy();
+  compChart=new Chart(ctx2,{
+    type:'line',
+    data:{
+      labels:ds(comp.labels,f),
+      datasets:[
+        {label:'① Nivel (α)',data:ds(comp.level,f),borderColor:'#e07b39',borderWidth:2,pointRadius:0,fill:false},
+        {label:'② Tendencia (β)',data:ds(comp.trendArr,f),borderColor:'#4ade80',borderWidth:2,pointRadius:0,fill:false,yAxisID:'y2'},
+        {label:'③ Estacionalidad (γ)',data:ds(comp.seasonArr,f),borderColor:'#a78bfa',borderWidth:2,pointRadius:0,fill:'origin',backgroundColor:'rgba(167,139,250,0.07)'}
+      ]
+    },
+    options:{
+      responsive:true,animation:{duration:250},
+      plugins:{
+        legend:{labels:{color:'#475569',font:{size:10},boxWidth:14,padding:10}},
+        tooltip:{backgroundColor:TT.backgroundColor,titleColor:TT.titleColor,bodyColor:TT.bodyColor,borderColor:TT.borderColor,borderWidth:TT.borderWidth,padding:TT.padding}
+      },
+      scales:{
+        x:{ticks:{color:'#334155',maxTicksLimit:12,font:{size:10}},grid:{color:'#0d1825'}},
+        y:{ticks:{color:'#334155',font:{size:10}},grid:{color:'#0d1825'},title:{display:true,text:'Valor',color:'#2d3f55',font:{size:10}}},
+        y2:{position:'right',ticks:{color:'#4ade80',font:{size:10}},grid:{drawOnChartArea:false},title:{display:true,text:'Tendencia',color:'#4ade80',font:{size:10}}}
+      }
+    }
+  });
+}
+
+document.getElementById('sigma').addEventListener('input',function(){
+  sigma=parseFloat(this.value);
+  document.getElementById('sigmaVal').textContent=sigma.toFixed(1);
+  buildCharts();
+});
+document.getElementById('period').addEventListener('input',function(){
+  period=parseInt(this.value);
+  document.getElementById('periodVal').textContent=period+' min';
+  buildCharts();
+});
+
+buildCharts();
+</script>
+</body>
+</html>
